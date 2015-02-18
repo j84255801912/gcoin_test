@@ -15,7 +15,7 @@ from peer_addresses import peer_addresses
 
 class Test(object):
     mint_amount = 10000
-    color_number = 10000
+    color_number = 30
     sleep_time = 15
     license = []
 
@@ -39,9 +39,9 @@ class Test(object):
 
     def mint(self, amount, color):
         return self.rpc_calls("mint", str(amount), str(color))
-    def distribute_money(self, amount, color):
+    def activate(self, color):
         for peer in self.peer_address:
-            tx_hash = self.rpc_calls("sendtoaddress", peer, str(amount), str(color))
+            tx_hash = self.rpc_calls("sendtoaddress", peer, str(1), str(color))
     def alliance_track(self):
         # pre_mint a lot for efficiency
         mint_tx_hash = self.mint(1, 0)
@@ -52,7 +52,7 @@ class Test(object):
 
         # randomly send license
         peer = random.choice(self.peer_address)
-        color = random.randint(1, self.color_number + 1)
+        color = random.randint(1, self.color_number)
         tx_hash = self.rpc_calls("sendlicensetoaddress", peer, str(color))
         print "%s : send %s license to %s" % (inspect.stack()[0][3], str(color), peer)
     def issuer_track(self):
@@ -63,7 +63,7 @@ class Test(object):
         for i in all_license:
             mint_tx_hash = self.mint(self.mint_amount, i)
         if len(all_license) != 0:
-            print "%s : mint money, amount = %f, color = %s" % (inspect.stack()[0][3], self.mint_amount, ' '.join(map(str, all_license)))
+            print "%s : mint money, color = %s, amount = %s" % (inspect.stack()[0][3], ' '.join(map(str, all_license)), str(self.mint_amount))
 
         # wait for a little time for the mint tx's confirmation
         if len(all_license) != 0:
@@ -74,7 +74,7 @@ class Test(object):
         for i in all_license:
             if i not in self.license:
                 self.license.append(i)
-                self.distribute_money(1, i)
+                self.activate(i)
         if len(all_license) != 0:
             print "%s : activate peers" % (inspect.stack()[0][3],)
 
@@ -86,10 +86,11 @@ class Test(object):
         for color, money in out.items():
             if int(color) != 0:
                 for peer in self.peer_address:
-                    if random.choice([True, False]):
+                    if random.randint(0, 9) == 0:
                         # 5 is the magic number
-                        tx_hash = self.rpc_calls("sendtoaddress", peer, str(random.uniform(0, money) / float(5)), str(color))
-        print "%s : send money to the others" % (inspect.stack()[0][3],)
+                        money_out = random.uniform(0, float(money)) / float(10)
+                        tx_hash = self.rpc_calls("sendtoaddress", peer, str(money_out), str(color))
+                        print "%s : send color = %s, amount = %s to the %s" % (inspect.stack()[0][3], str(color), str(money_out), peer)
     def __init__(self):
         self.import_wallet_address()
         self.import_peer_address()
