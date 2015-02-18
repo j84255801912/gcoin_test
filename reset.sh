@@ -1,7 +1,7 @@
 #!/bin/bash
 # usage     :   e.g.  ./reset.sh 201
 killall bitcoind
-mv $HOME/.bitcoin/gcoin $HOME/.bitcoin/gcoin_`date +%s`
+mv $HOME/.bitcoin/gcoin $HOME/.bitcoin/gcoin_`date +%Y%m%d%H%M`
 bitcoind -gcoin -daemon
 sleep 2
 killall bitcoind
