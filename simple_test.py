@@ -14,8 +14,8 @@ from subprocess import Popen, PIPE, STDOUT
 from peer_addresses import peer_addresses
 
 class Test(object):
-    mint_amount = 10000
-    color_number = 30
+    mint_amount = 1000
+    color_number = 100
     sleep_time = 15
     license = []
 
@@ -40,9 +40,13 @@ class Test(object):
     def mint(self, amount, color):
         return self.rpc_calls("mint", str(amount), str(color))
     def activate(self, color):
+        for i in xrange(len(self.peer_address)):
+            self.mint(1, color)
+
+        sleep(self.sleep_time)
+
         for peer in self.peer_address:
             tx_hash = self.rpc_calls("sendtoaddress", peer, str(1), str(color))
-            time.sleep(0.05)
     def alliance_track(self):
         # pre_mint a lot for efficiency
         mint_tx_hash = self.mint(1, 0)
@@ -60,6 +64,14 @@ class Test(object):
         out = json.loads(self.rpc_calls("getlicenseinfo"))
         all_license = out.keys()
 
+        # activate all peers
+        for i in all_license:
+            if i not in self.license:
+                self.license.append(i)
+                self.activate(i)
+        if len(all_license) != 0:
+            print "%s : activate peers" % (inspect.stack()[0][3],)
+
         # mint money that we can mint
         for i in all_license:
             mint_tx_hash = self.mint(self.mint_amount, i)
@@ -70,14 +82,6 @@ class Test(object):
         if len(all_license) != 0:
             print "%s : sleep %d sec" % (inspect.stack()[0][3], self.sleep_time)
             time.sleep(self.sleep_time)
-
-        # activate all peers
-        for i in all_license:
-            if i not in self.license:
-                self.license.append(i)
-                self.activate(i)
-        if len(all_license) != 0:
-            print "%s : activate peers" % (inspect.stack()[0][3],)
 
     def normal_track(self):
         # get all available balance
