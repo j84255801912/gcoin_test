@@ -42,6 +42,7 @@ class Test(object):
     def activate(self, color):
         for peer in self.peer_address:
             tx_hash = self.rpc_calls("sendtoaddress", peer, str(1), str(color))
+            time.sleep(0.05)
     def alliance_track(self):
         # pre_mint a lot for efficiency
         mint_tx_hash = self.mint(1, 0)

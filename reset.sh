@@ -9,4 +9,4 @@ sleep 3
 killall bitcoind
 sleep 3
 cp ./wallet.dat.$1 $HOME/.bitcoin/gcoin/wallet.dat
-bitcoind -gcoin -daemon
+echo "import wallet.dat done, now we can start bitcoind!"
