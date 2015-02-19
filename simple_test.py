@@ -43,7 +43,7 @@ class Test(object):
         for i in xrange(len(self.peer_address)):
             self.mint(1, color)
 
-        sleep(self.sleep_time)
+        time.sleep(self.sleep_time)
 
         for peer in self.peer_address:
             tx_hash = self.rpc_calls("sendtoaddress", peer, str(1), str(color))
