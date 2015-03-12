@@ -93,9 +93,10 @@ class Test(object):
                 for peer in self.peer_address:
                     if random.randint(0, 100) == 0:
                         # 5 is the magic number
-                        money_out = random.randint(1, int(money) // 5)
-                        tx_hash = self.rpc_calls("sendtoaddress", peer, str(money_out), str(color))
-                        print "%s : send color = %s, amount = %s to the %s" % (inspect.stack()[0][3], str(color), str(money_out), peer)
+			if int(money) // 5 >= 1:
+                        	money_out = random.randint(1, int(money) // 5)
+                        	tx_hash = self.rpc_calls("sendtoaddress", peer, str(money_out), str(color))
+                        	print "%s : send color = %s, amount = %s to the %s" % (inspect.stack()[0][3], str(color), str(money_out), peer)
     def __init__(self):
         self.import_wallet_address()
         self.import_peer_address()
