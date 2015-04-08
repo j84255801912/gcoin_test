@@ -194,6 +194,9 @@ class Test(object):
 
         flag_complete = False
 
+        self.reset_and_be_alliance()
+        self.import_wallet_address()
+
         # fetch licenses
         (code, out) = rpc_calls("getlicenseinfo")
         out = json.loads(out)
@@ -209,12 +212,13 @@ class Test(object):
 
         (code, out) = rpc_calls("mint", MINT_AMOUNT, color)
 
-        # use a stupid way to verify that if the tx is valid or not.
-        # 64 is the len of txid
-        if len(out) != 64:
+        if code == RPC_SUCCESS:
+            flag_complete = False
+        elif code == RPC_ERROR_WALLET:
             flag_complete = True
         else:
-            flag_complete = False
+            error("Error :", "something goes wrong!")
+            sys.exit(EXIT_FAILURE)
 
         return flag_complete
 
@@ -228,7 +232,7 @@ class Test(object):
         return False
 
     def wait_for_tx_confirmation(self, txid, flag_maturity=False,
-                                 num_trial=10):
+                                 num_trial=20):
         """ Keep pooling bitcoind to get tx's confirmations. """
 
         count = 0
@@ -286,7 +290,7 @@ class Test(object):
     def color_test(self, color):
         """ Return if the license transaction is valid
 
-            return value:
+            #Return value
                 True,  if color is ok.
                 False, if color is not ok.
         """
@@ -322,6 +326,9 @@ class Test(object):
                          UINT32_MAX - 1, UINT32_MAX, UINT32_MAX + 1]
         testing_answer = [False, None, True, True, True, False]
 
+        self.reset_and_be_alliance()
+        self.import_wallet_address()
+
         for i in xrange(len(testing_color)):
             result = self.color_test(testing_color[i])
             if result != testing_answer[i]:
@@ -350,13 +357,13 @@ class Test(object):
     def mint_amount_test(self):
         """ edge test 3-2
 
-            [Caution]
+            #Caution
             1. Mint amount should be integer
             2. Max amount is 10**10
             3. Using multiple colors to prevent from overflow of coins of
                one single color
 
-            [Return Value]
+            #Return Value
                 True    :   pass
                 False   :   fail
         """
@@ -367,8 +374,10 @@ class Test(object):
         testing_color = [1, 2, 3, 4, 5, 6]
         testing_answer = [False, False, True, True, True, False]
 
-        # preparing for licenses
+        self.reset_and_be_alliance()
+        self.import_wallet_address()
 
+        # preparing for licenses
         for i in xrange(len(testing_amount)):
             result = self.mint_test(testing_amount[i], testing_color[i])
             if result != testing_answer[i]:
@@ -379,15 +388,26 @@ class Test(object):
     def nonmember_transactions(self):
         """ edge test 1-3
 
-            [Return Value]
+            #Target
+                Test if error occurs when an nonmember address receive coins.
+
+            #Figures
+                wallet_address[0] is a member, wallet_address[1] is a
+                nonmember.
+
+            #Return Value
                 True    :   pass
                 False   :   fail
         """
 
-        self.get_license_and_mint(self.wallet_address[0], 1, 123)
+        TEST_COLOR = 123
+
+        self.reset_and_be_alliance()
+        self.import_wallet_address()
+        self.get_license_and_mint(self.wallet_address[0], 1, TEST_COLOR)
 
         # activate wallet_address[1]
-        code, out = rpc_calls("sendtoaddress", self.wallet_address[1], 1, 123)
+        code, out = rpc_calls("sendtoaddress", self.wallet_address[1], 1, TEST_COLOR)
         if code != RPC_SUCCESS:
             error("Error :", "sendtoaddress failed")
             sys.exit(EXIT_FAILURE)
@@ -397,16 +417,105 @@ class Test(object):
             sys.exit(EXIT_FAILURE)
 
         # transfer money to a nonmember, i.e. wallet_address[2]
-        code, out = rpc_calls("sendtoaddress", self.wallet_address[2], 1, 123)
+        code, out = rpc_calls("sendtoaddress", self.wallet_address[2], 1, TEST_COLOR)
         if code != RPC_ERROR_WALLET:
             return False
         return True
 
-    def __init__(self):
+    def coins_transfer_test(self):
+        """ edge test 3-4
+
+            #Figure
+                By default NUM_ADDRESSES = 3,
+                wallet_address[1], wallet_address[2], wallet_address[3]
+
+            #course
+                1. Everyone get some coins.
+                2. Randomly choose 2 addresses from the given addresses,
+                   and sendfrom the one to the other. This operation will be
+                   repeated for NUM_TESTS times.
+                3. Count the balance of NUM_ADDRESSES addresses, and call
+                   getaddressbalance to identify if the numbers are correct
+                   or not.
+
+            #Return Value
+                True    :   pass
+                False   :   fail
+        """
+
+        NUM_TESTS = 20
+        NUM_ADDRESSES = 3
+        TEST_COLOR = 123
+        BASE = 1
+        TOTAL_COINS = 10000 * NUM_ADDRESSES * BASE
+
+        flag_complete = True
+        accumulate_value = [0] * (NUM_ADDRESSES + 1)
+
 
         self.reset_and_be_alliance()
         self.import_wallet_address()
-        print self.nonmember_transactions()
+        self.get_license_and_mint(self.wallet_address[0], TOTAL_COINS / BASE,
+                                  TEST_COLOR)
+
+        # phase 1
+        for i in xrange(1, NUM_ADDRESSES + 1):
+            amount = TOTAL_COINS / NUM_ADDRESSES
+
+            code, out = rpc_calls("sendfrom", self.wallet_address[0],
+                                  self.wallet_address[i], amount / BASE, TEST_COLOR)
+            if code != RPC_SUCCESS:
+                error("Error :", "sendfrom failed")
+                sys.exit(EXIT_FAILURE)
+            if self.wait_for_tx_confirmation(out) != True:
+                error("Error :", "sendfrom tx not confirmed")
+                sys.exit(EXIT_FAILURE)
+
+            accumulate_value[0] -= amount
+            accumulate_value[i] += amount
+
+        # phase 2
+        for i in xrange(NUM_TESTS):
+            sender, receiver = random.sample(range(1, NUM_ADDRESSES + 1), 2)
+            amount = random.randint(BASE, accumulate_value[sender])
+            code, out = rpc_calls("sendfrom", self.wallet_address[sender],
+                                  self.wallet_address[receiver], amount / float(BASE),
+                                  TEST_COLOR)
+            if code != RPC_SUCCESS:
+                error("Error :", "sendfrom failed")
+                sys.exit(EXIT_FAILURE)
+            if self.wait_for_tx_confirmation(out) != True:
+                error("Error :", "sendfrom tx not confirmed")
+                sys.exit(EXIT_FAILURE)
+
+            accumulate_value[sender] -= amount
+#            accumulate_value[sender] = float("%.8f" % round(
+#                                            accumulate_value[sender], 8))
+            accumulate_value[receiver] += amount
+#            accumulate_value[receiver] = float("%.8f" % round(
+#                                            accumulate_value[receiver], 8))
+
+        # phase 3
+        for i in xrange(1, NUM_ADDRESSES + 1):
+            code, out = rpc_calls("getaddressbalance", self.wallet_address[i])
+            out = json.loads(out)
+            if code != RPC_SUCCESS:
+                error("Error :", "getaddressbalance failed")
+                sys.exit(EXIT_FAILURE)
+
+            address_balance = float(out[str(TEST_COLOR)])
+            address_balance = address_balance * BASE
+            if address_balance != accumulate_value[i]:
+                print "%s balance not consistent, rpc: %r, accu: %r" % (
+                      self.wallet_address[i], address_balance,
+                      accumulate_value[i])
+                flag_complete = False
+
+        return flag_complete
+
+    def __init__(self):
+
+        print self.coins_transfer_test()
 #        print self.mint_amount_test()
 #        self.get_license_and_mint(self.wallet_address[0], 10000, 123)
 #        print self.usable_color_test()
