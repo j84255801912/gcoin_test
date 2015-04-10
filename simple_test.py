@@ -21,7 +21,7 @@ RPC_SUCCESS = 0
 RPC_ERROR_INVALID_COLOR = 3
 RPC_ERROR_WALLET = 4
 
-UINT32_MAX = 2 ** 31 - 1
+UINT32_MAX = 2 ** 32 - 1
 UINT32_MIN = 0
 MINT_AMOUNT = 1000
 NUM_COLOR = 100
@@ -304,10 +304,10 @@ class Test(object):
 
         (code, txid) = rpc_calls("sendlicensetoaddress",
                                  self.wallet_address[0], color)
-        if code == RPC_ERROR_INVALID_COLOR:
+        if code == RPC_ERROR_INVALID_COLOR or code == RPC_ERROR_WALLET:
             return False
         elif code != RPC_ERROR_INVALID_COLOR and code != RPC_SUCCESS:
-            error("Error :", "sendlicensetoaddress failed")
+            error("Error :", "sendlicensetoaddress failed2", txid)
             sys.exit(EXIT_FAILURE)
 
 #        print "Waiting for license tx: {0} to be confirmed...".format(txid)
@@ -324,7 +324,7 @@ class Test(object):
         flag_complete = True
         testing_color = [UINT32_MIN - 1, UINT32_MIN, UINT32_MIN + 1,
                          UINT32_MAX - 1, UINT32_MAX, UINT32_MAX + 1]
-        testing_answer = [False, None, True, True, True, False]
+        testing_answer = [False, False, True, True, True, False]
 
         self.reset_and_be_alliance()
         self.import_wallet_address()
@@ -409,7 +409,7 @@ class Test(object):
         # activate wallet_address[1]
         code, out = rpc_calls("sendtoaddress", self.wallet_address[1], 1, TEST_COLOR)
         if code != RPC_SUCCESS:
-            error("Error :", "sendtoaddress failed")
+            error("Error :", "sendtoaddress failed", out)
             sys.exit(EXIT_FAILURE)
         flag_tx_confirmed = self.wait_for_tx_confirmation(out)
         if flag_tx_confirmed != True:
@@ -465,7 +465,7 @@ class Test(object):
             code, out = rpc_calls("sendfrom", self.wallet_address[0],
                                   self.wallet_address[i], amount / BASE, TEST_COLOR)
             if code != RPC_SUCCESS:
-                error("Error :", "sendfrom failed")
+                error("Error :", "sendfrom failed", out)
                 sys.exit(EXIT_FAILURE)
             if self.wait_for_tx_confirmation(out) != True:
                 error("Error :", "sendfrom tx not confirmed")
@@ -477,30 +477,27 @@ class Test(object):
         # phase 2
         for i in xrange(NUM_TESTS):
             sender, receiver = random.sample(range(1, NUM_ADDRESSES + 1), 2)
+            # TODO: make random.uniform case works!
             amount = random.randint(BASE, accumulate_value[sender])
             code, out = rpc_calls("sendfrom", self.wallet_address[sender],
                                   self.wallet_address[receiver], amount / float(BASE),
                                   TEST_COLOR)
             if code != RPC_SUCCESS:
-                error("Error :", "sendfrom failed")
+                error("Error :", "sendfrom failed", out)
                 sys.exit(EXIT_FAILURE)
             if self.wait_for_tx_confirmation(out) != True:
                 error("Error :", "sendfrom tx not confirmed")
                 sys.exit(EXIT_FAILURE)
 
             accumulate_value[sender] -= amount
-#            accumulate_value[sender] = float("%.8f" % round(
-#                                            accumulate_value[sender], 8))
             accumulate_value[receiver] += amount
-#            accumulate_value[receiver] = float("%.8f" % round(
-#                                            accumulate_value[receiver], 8))
 
         # phase 3
         for i in xrange(1, NUM_ADDRESSES + 1):
             code, out = rpc_calls("getaddressbalance", self.wallet_address[i])
             out = json.loads(out)
             if code != RPC_SUCCESS:
-                error("Error :", "getaddressbalance failed")
+                error("Error :", "getaddressbalance failed", out)
                 sys.exit(EXIT_FAILURE)
 
             address_balance = float(out[str(TEST_COLOR)])
@@ -515,24 +512,10 @@ class Test(object):
 
     def __init__(self):
 
+        print self.minting_without_license()
+        print self.mint_amount_test()
+        print self.usable_color_test()
         print self.coins_transfer_test()
-#        print self.mint_amount_test()
-#        self.get_license_and_mint(self.wallet_address[0], 10000, 123)
-#        print self.usable_color_test()
-#        print self.is_alliance()
-#        print self.have_license(10)
-#        self.import_peer_address()
-#        print self.minting_without_license()
-#        self._auto_run()
-
-    def _auto_run(self):
-
-        while True:
-            if __debug__:
-                self.alliance_track()
-            else:
-                self.issuer_track()
-            self.normal_track()
 
 if __name__ == "__main__":
-    t = Test()
+    t = EdgeTest()
