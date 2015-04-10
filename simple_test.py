@@ -53,7 +53,7 @@ def rpc_calls(*args, **kwargs):
     else:
         return p.returncode, out[1].replace("\n", "")
 
-class Test(object):
+class AutoTest(object):
     """Testing"""
 
     license = []
@@ -280,6 +280,168 @@ class Test(object):
         code, out = rpc_calls("mint", amount, color)
         if code != RPC_SUCCESS:
             error("Error :", "mint {0} {1} failed".format(amount, color))
+            sys.exit(EXIT_FAILURE)
+        flag_mint_confirmed = self.wait_for_tx_confirmation(out, True)
+        if flag_mint_confirmed != True:
+            error("Error :", "mint {0} {1} not confirmed".format(amount,
+                                                                 color))
+            sys.exit(EXIT_FAILURE)
+
+    def __init__(self):
+
+        pass
+
+    def _auto_run(self):
+
+        while True:
+            if __debug__:
+                self.alliance_track()
+            else:
+                self.issuer_track()
+            self.normal_track()
+
+class EdgeTest(object):
+    """Edge Testing"""
+
+    license = []
+
+    def import_wallet_address(self):
+
+        (code, out) = rpc_calls("listwalletaddress")
+        self.wallet_address = json.loads(out)
+        print "%s : done" % (inspect.stack()[0][3],)
+
+    def reset_bitcoind(self):
+
+        return_code = call(["killall", "-9", "bitcoind"])
+
+        time.sleep(3)
+
+        return_code = call(["rm", "-rf", expanduser("~") + "/.bitcoin/gcoin"])
+        return_code = call(["bitcoind", "-gcoin", "-daemon"])
+        if return_code == 0:
+            print "Resetting bitcoind...done"
+            return True
+        else:
+            return False
+
+    def reset_and_be_alliance(self, num_trial=10):
+
+        if not self.reset_bitcoind():
+            error("Error : reset bitcoind failed")
+            return False
+
+        count = 0
+        while count < num_trial:
+            (code, out) = rpc_calls("setgenerate", "true")
+            if code == RPC_SUCCESS:
+                return True
+
+            time.sleep(2)
+            count += 1
+
+        return False
+
+    def have_license(self, color):
+
+        (code, out) = rpc_calls("getlicenseinfo")
+        out = json.loads(out)
+        all_license = out.keys()
+        licenses = map(int, all_license)
+
+        return True if color in licenses else False
+
+    def minting_without_license(self):
+        """ edge test 1-2 """
+
+        flag_complete = False
+
+        self.reset_and_be_alliance()
+        self.import_wallet_address()
+
+        # fetch licenses
+        (code, out) = rpc_calls("getlicenseinfo")
+        out = json.loads(out)
+        all_license = out.keys()
+
+        # find a color whose license is not belonged to us
+        licenses = map(int, all_license)
+        color = 1
+        while True:
+            if color not in licenses:
+                break
+            color += 1
+
+        (code, out) = rpc_calls("mint", MINT_AMOUNT, color)
+
+        if code == RPC_SUCCESS:
+            flag_complete = False
+        elif code == RPC_ERROR_WALLET:
+            flag_complete = True
+        else:
+            error("Error :", "something goes wrong!", out)
+            sys.exit(EXIT_FAILURE)
+
+        return flag_complete
+
+    def is_alliance(self):
+
+        (code, out) = rpc_calls("getmemberlist")
+        out = json.loads(out)
+        for i in out[u'member_list']:
+            if i == str(self.wallet_address[0]):
+                return True
+        return False
+
+    def wait_for_tx_confirmation(self, txid, flag_maturity=False,
+                                 num_trial=20):
+        """ Keep pooling bitcoind to get tx's confirmations. """
+
+        count = 0
+        while count < num_trial:
+            (code, out) = rpc_calls("getrawtransaction", txid, 1)
+            out = json.loads(out)
+            keys = map(str, out.keys())
+            if 'confirmations' in keys:
+                if not flag_maturity:
+                    return True
+                else:
+                    if int(out['confirmations']) >= MATURITY:
+                        return True
+            count += 1
+            time.sleep(1)
+
+        return False
+
+    def get_one_zeroes(self, number):
+
+        for i in xrange(number):
+            code, out = rpc_calls("mint", 1, 0)
+            if code != RPC_SUCCESS:
+                error("Error :", "mint 1 0 failed", out)
+                sys.exit(EXIT_FAILURE)
+
+        flag_mint_confirmed = self.wait_for_tx_confirmation(out, True)
+        if flag_mint_confirmed != True:
+            error("Error :", "mint 1 0 not confirmed")
+            sys.exit(EXIT_FAILURE)
+
+    def get_license_and_mint(self, address, amount, color):
+
+        self.get_one_zeroes(1)
+
+        code, out = rpc_calls("sendlicensetoaddress", address, color)
+        if code != RPC_SUCCESS:
+            error("Error :", "sendlicensetoaddress failed1", out)
+            sys.exit(EXIT_FAILURE)
+        flag_license_confirmed = self.wait_for_tx_confirmation(out)
+        if flag_license_confirmed != True:
+            error("Error :", "license not confirmed")
+            sys.exit(EXIT_FAILURE)
+
+        code, out = rpc_calls("mint", amount, color)
+        if code != RPC_SUCCESS:
+            error("Error :", "mint {0} {1} failed".format(amount, color), out)
             sys.exit(EXIT_FAILURE)
         flag_mint_confirmed = self.wait_for_tx_confirmation(out, True)
         if flag_mint_confirmed != True:
