@@ -184,6 +184,7 @@ def alliance_track():
 def activate_addresses(color):
 
     NUM_ALL_ADDRESSES = len(env.hosts) * NUM_ADDRESSES
+
     for i in xrange(NUM_ALL_ADDRESSES * 2):
         result = cli("mint", 1, color)
 
@@ -240,9 +241,10 @@ def normal_track():
     peer, address = random_choose_an_address()
     color, money = random.choice(balance.items())
     color = int(color)
-    money = float(money)
-
-
+    money = int(money)
+    money_out = money / 2
+    result = cli("sendtoaddress", address, money_out, color)
+    wait_for_tx_confirmed(result)
 
 @parallel
 def running():
