@@ -14,8 +14,6 @@ import time
 from os.path import expanduser
 from subprocess import Popen, PIPE, STDOUT, call
 
-from peer_addresses import peer_addresses
-
 EXIT_FAILURE = 1
 
 RPC_SUCCESS = 0
@@ -28,6 +26,28 @@ MINT_AMOUNT = 1000
 NUM_COLOR = 100
 SLEEP_TIME = 15
 MATURITY = 11
+
+ERROR_HAVE_NO_LICENSE = "you don't have this license"
+ERROR_LICENSE_NOT_GENERATED = "license of this color hasn't been generated yet"
+ERROR_SERVER_CONNECTION = "couldn't connect to server"
+ERROR_INVALID_COLOR = "Invalid color"
+ERROR_MINT_OVER_MAXCOIN = "mint Value > MaxCoin"
+ERROR_MINT_VALUE_NEGATIVE = "CommitTransaction() : Error: MINT Transaction \
+not valid"
+ERROR_MINT_VALUE_ZERO = "mint value should not be 0"
+ERROR_COINS_TOO_MUCH = "coins of this color may overflow"
+ERROR_TRANSACTION_REJECTED = "Error: The transaction was rejected! This might \
+happen if some of the coins in your wallet were already spent, such as if \
+you used a copy of wallet.dat and coins were spent in the copy but not \
+marked as spent here."
+
+def extract_error_message(out):
+
+    index = out.find('{')
+    if index == -1:
+        return out[len('error:') + 1:]
+    error_json = json.loads(out[index:])
+    return error_json['message']
 
 def error(*args):
 
@@ -53,7 +73,8 @@ def rpc_calls(*args, **kwargs):
     if p.returncode == 0:
         return p.returncode, out[0].replace("\n", "")
     else:
-        return p.returncode, out[1].replace("\n", "")
+        message = extract_error_message(out[1].replace("\n", ""))
+        return p.returncode, message
 
 class EdgeTest(object):
     """Edge Testing"""
@@ -62,7 +83,7 @@ class EdgeTest(object):
 
     def import_wallet_address(self):
 
-        (code, out) = rpc_calls("listwalletaddress")
+        code, out = rpc_calls("listwalletaddress", "-p")
         self.wallet_address = json.loads(out)
         print "%s : done" % (inspect.stack()[0][3],)
 
@@ -106,10 +127,14 @@ class EdgeTest(object):
 
         return True if color in licenses else False
 
-    def minting_without_license(self):
+    def mint_without_license(self):
         """ edge test 1-2 """
 
         flag_complete = False
+
+        case = [None]
+        answer = [None]
+        pass_or_not = [True]
 
         self.reset_and_be_alliance()
         self.import_wallet_address()
@@ -127,17 +152,18 @@ class EdgeTest(object):
                 break
             color += 1
 
-        (code, out) = rpc_calls("mint", MINT_AMOUNT, color)
+        code, out = rpc_calls("mint", MINT_AMOUNT, color)
 
         if code == RPC_SUCCESS:
-            flag_complete = False
-        elif code == RPC_ERROR_WALLET:
-            flag_complete = True
+            pass_or_not[0] = False
         else:
-            error("Error :", "something goes wrong!", out)
-            sys.exit(EXIT_FAILURE)
+            if out == ERROR_HAVE_NO_LICENSE or out == ERROR_LICENSE_NOT_GENERATED:
+                pass_or_not[0] = True
+            else:
+                error("Error: ", "something wrong")
+                sys.exit(EXIT_FAILURE)
 
-        return flag_complete
+        return pass_or_not
 
     def is_alliance(self):
 
@@ -212,22 +238,21 @@ class EdgeTest(object):
                 False, if color is not ok.
         """
 
-        (code, txid) = rpc_calls("mint", 1, 0)
+        code, txid = rpc_calls("mint", 1, 0)
 
         flag_mint_confirmed = self.wait_for_tx_confirmation(txid, True)
         if flag_mint_confirmed != True:
             error("Error :", "mint 1 0 not confirmed")
             sys.exit(EXIT_FAILURE)
 
-        (code, txid) = rpc_calls("sendlicensetoaddress",
+        code, txid = rpc_calls("sendlicensetoaddress",
                                  self.wallet_address[0], color)
-        if code == RPC_ERROR_INVALID_COLOR or code == RPC_ERROR_WALLET:
-            return False
-        elif code != RPC_ERROR_INVALID_COLOR and code != RPC_SUCCESS:
+        if code != RPC_SUCCESS:
+            if txid == ERROR_INVALID_COLOR:
+                return False
             error("Error :", "sendlicensetoaddress failed2", txid)
             sys.exit(EXIT_FAILURE)
 
-#        print "Waiting for license tx: {0} to be confirmed...".format(txid)
         flag_license_confirmed = self.wait_for_tx_confirmation(txid)
         if flag_license_confirmed != True:
             error("Error :", "license not confirmed")
@@ -239,21 +264,23 @@ class EdgeTest(object):
         """ edge test 3-1 """
 
         flag_complete = True
-        testing_color = [UINT32_MIN - 1, UINT32_MIN, UINT32_MIN + 1,
+
+        case = [UINT32_MIN - 1, UINT32_MIN, UINT32_MIN + 1,
                          UINT32_MAX - 1, UINT32_MAX, UINT32_MAX + 1]
-        testing_answer = [False, False, True, True, True, False]
+        answer = [False, False, True, True, True, False]
+        pass_or_not = [True] * len(case)
 
         self.reset_and_be_alliance()
         self.import_wallet_address()
 
-        for i in xrange(len(testing_color)):
-            result = self.color_test(testing_color[i])
-            if result != testing_answer[i]:
+        for i in xrange(len(case)):
+            result = self.color_test(case[i])
+            if result != answer[i]:
                 print "color %d failed, result=%r answer=%r" % (
-                       testing_color[i], result, testing_answer[i])
-                flag_complete = False
+                       case[i], result, answer[i])
+                pass_or_not[i] = False
 
-        return flag_complete
+        return pass_or_not
 
     def mint_test(self, amount, color):
 
@@ -262,14 +289,14 @@ class EdgeTest(object):
             sys.exit(EXIT_FAILURE)
 
         code, out = rpc_calls("mint", amount, color)
+
         if code == RPC_SUCCESS:
-            result = True
-        elif code == RPC_ERROR_WALLET:
-            result = False
-        else:
-            error("Error: ", "mint not confirmed")
-            sys.exit(EXIT_FAILURE)
-        return result
+            return True
+        if out == ERROR_MINT_OVER_MAXCOIN or out == ERROR_MINT_VALUE_NEGATIVE\
+           or out == ERROR_MINT_VALUE_ZERO:
+            return False
+        error("Error: ", "mint error", out)
+        sys.exit(EXIT_FAILURE)
 
     def mint_amount_test(self):
         """ edge test 3-2
@@ -287,20 +314,21 @@ class EdgeTest(object):
 
         MAX_AMOUNT = 10 ** 10
         flag_complete = True
-        testing_amount = [-1, 0, 1, MAX_AMOUNT - 1, MAX_AMOUNT, MAX_AMOUNT + 1]
         testing_color = [1, 2, 3, 4, 5, 6]
-        testing_answer = [False, False, True, True, True, False]
+
+        case = [-1, 0, 1, MAX_AMOUNT - 1, MAX_AMOUNT, MAX_AMOUNT + 1]
+        answer = [False, False, True, True, True, False]
+        pass_or_not = [True] * len(case)
 
         self.reset_and_be_alliance()
         self.import_wallet_address()
 
         # preparing for licenses
-        for i in xrange(len(testing_amount)):
-            result = self.mint_test(testing_amount[i], testing_color[i])
-            if result != testing_answer[i]:
-                print "Error :", "testing_amount %d failed" % testing_amount[i]
-                flag_complete = False
-        return flag_complete
+        for i in xrange(len(case)):
+            result = self.mint_test(case[i], testing_color[i])
+            if result != answer[i]:
+                pass_or_not[i] = False
+        return pass_or_not
 
     def nonmember_transactions(self):
         """ edge test 1-3
@@ -319,25 +347,34 @@ class EdgeTest(object):
 
         TEST_COLOR = 123
 
+        case = [None]
+        answer = [None]
+        pass_or_not = [True]
+
         self.reset_and_be_alliance()
         self.import_wallet_address()
         self.get_license_and_mint(self.wallet_address[0], 1, TEST_COLOR)
 
         # activate wallet_address[1]
-        code, out = rpc_calls("sendtoaddress", self.wallet_address[1], 1, TEST_COLOR)
+        code, out = rpc_calls("sendfrom", self.wallet_address[0],
+                              self.wallet_address[1], 1, TEST_COLOR)
         if code != RPC_SUCCESS:
-            error("Error :", "sendtoaddress failed", out)
+            error("Error :", "sendfrom failed", out)
             sys.exit(EXIT_FAILURE)
         flag_tx_confirmed = self.wait_for_tx_confirmation(out)
         if flag_tx_confirmed != True:
-            error("Error :", "sendtoaddress tx not confirmed")
+            error("Error :", "sendfrom tx not confirmed")
             sys.exit(EXIT_FAILURE)
 
         # transfer money to a nonmember, i.e. wallet_address[2]
-        code, out = rpc_calls("sendtoaddress", self.wallet_address[2], 1, TEST_COLOR)
-        if code != RPC_ERROR_WALLET:
-            return False
-        return True
+        code, out = rpc_calls("sendfrom", self.wallet_address[1],
+                              self.wallet_address[2], 1, TEST_COLOR)
+        if code == RPC_ERROR_WALLET and out == ERROR_TRANSACTION_REJECTED:
+            pass_or_not[0] = True
+        else:
+            pass_or_not[0] = False
+
+        return pass_or_not
 
     def coins_transfer_test(self):
         """ edge test 3-4
@@ -360,9 +397,15 @@ class EdgeTest(object):
                 False   :   fail
         """
 
+        # params
         NUM_TESTS = 20
         NUM_ADDRESSES = 3
         TEST_COLOR = 123
+
+        case = [None]
+        answer = [None]
+        pass_or_not = [True]
+
         BASE = 1
         TOTAL_COINS = 10000 * NUM_ADDRESSES * BASE
 
@@ -395,7 +438,7 @@ class EdgeTest(object):
         for i in xrange(NUM_TESTS):
             sender, receiver = random.sample(range(1, NUM_ADDRESSES + 1), 2)
             # TODO: make random.uniform case works!
-            amount = random.randint(BASE, accumulate_value[sender])
+            amount = random.randint(BASE, accumulate_value[sender] * BASE)
             code, out = rpc_calls("sendfrom", self.wallet_address[sender],
                                   self.wallet_address[receiver], amount / float(BASE),
                                   TEST_COLOR)
@@ -423,16 +466,20 @@ class EdgeTest(object):
                 print "%s balance not consistent, rpc: %r, accu: %r" % (
                       self.wallet_address[i], address_balance,
                       accumulate_value[i])
-                flag_complete = False
+                pass_or_not[0] = False
 
-        return flag_complete
+        return pass_or_not
 
     def __init__(self):
 
-        print self.minting_without_license()
-        print self.mint_amount_test()
-        print self.usable_color_test()
-        print self.coins_transfer_test()
+        test_name = ['mint_without_license', 'mint_amount_test',
+                     'usable_color_test', 'nonmember_transactions',
+                     'coins_transfer_test']
+        result = []
+        for func_name in test_name:
+            func = getattr(self, func_name)
+            result.append(func())
+        print result
 
 if __name__ == "__main__":
     t = EdgeTest()

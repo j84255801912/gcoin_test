@@ -12,7 +12,8 @@ from fabric.tasks import execute
 
 from setting import user, password
 
-env.hosts = ["140.112.29.201", "127.0.0.1"]
+#env.hosts = ["127.0.0.1", "140.112.29.201", "core1.diqi.us", "core2.diqi.us", "core3.diqi.us", "core4.diqi.us"]
+env.hosts = ["127.0.0.1"]
 env.roledefs = {
     "alliance":   env.hosts,
 }
@@ -26,7 +27,7 @@ licenses = {}
 
 NUM_ADDRESSES = 10
 PORT = 55777
-MATURITY = 12
+MATURITY = 11
 NUM_COLORS = 1000
 MINT_AMOUNT = 1000
 
@@ -41,7 +42,7 @@ def cli(*args, **kwargs):
 
 def reset_bitcoind():
 
-    run("killall -9 bitcoind")
+    run("killall bitcoind")
 
     sleep(3)
 
@@ -67,13 +68,13 @@ def add_peers():
 def get_addresses():
 
     while True:
-        result = cli("listwalletaddress", NUM_ADDRESSES)
+        result = cli("listwalletaddress", "-p", NUM_ADDRESSES)
         if result.succeeded:
             break
         sleep(1)
 
     result = json.loads(result)
-    return [str(i) for i in result]
+    return map(str, result)
 
 @parallel
 def setup_connections():
@@ -96,7 +97,7 @@ def is_alliance(my_address):
 
         return my_address in member_list
 
-def wait_for_tx_confirmed(txid, flag_maturity=False, num_trial=20):
+def wait_for_tx_confirmed(txid, flag_maturity=False, num_trial=10000):
     """ Keep pooling bitcoind to get tx's confirmations. """
 
     with settings(warn_only=False):
@@ -177,9 +178,14 @@ def alliance_track():
     color = random.randint(1, NUM_COLORS)
 
     result = cli("sendlicensetoaddress", address, color)
+    if result.succeeded:
+        wait_for_tx_confirmed(result)
 
-    wait_for_tx_confirmed(result)
+def get_my_license_address(color):
 
+    result = cli("getlicenseinfo")
+    result = json.loads(result)
+    return result[str(color)]["address"]
 
 def activate_addresses(color):
 
@@ -190,19 +196,11 @@ def activate_addresses(color):
 
     wait_for_tx_confirmed(result, True)
 
-    for host, addr_list in addresses.items():
-        # activate others' addresses first, in case of dependency
-        # e.g. i mint to my_addr1, i send to my_addr2,
-        # then send to others_addr1, this incurs error "addr not record
-        # in blockchain"
-        if host == env.host:
-            continue
-        for addr in addr_list:
-            result = cli("sendtoaddress", addr, 1, color)
-    # At last, activate our own addresses
-    for addr in addresses[env.host]:
-        result = cli("sendtoaddress", addr, 1, color)
+    my_license_address = get_my_license_address(color)
 
+    for host, addr_list in addresses.items():
+        for addr in addr_list:
+            result = cli("sendfrom", my_license_address, addr, 1, color)
 
     wait_for_tx_confirmed(result)
 
@@ -239,6 +237,10 @@ def normal_track():
     balance = json.loads(result)
 
     peer, address = random_choose_an_address()
+    # if no balance then return
+    if balance == {}:
+        return
+
     color, money = random.choice(balance.items())
     color = int(color)
     money = int(money)
@@ -264,7 +266,9 @@ def test():
 
 if __name__ == '__main__':
 
-    with hide():
+    with hide('everything'):
+        print "Setting up connections..."
         addresses = execute(setup_connections)
+        print "Setting up alliance..."
         execute(set_alliance)
         execute(running)
