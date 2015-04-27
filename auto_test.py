@@ -40,6 +40,15 @@ class AutoTestError(Exception):
 def cli(*args, **kwargs):
     return run("bitcoin-cli -gcoin " + ' '.join(map(str, args)))
 
+def confirm_bitcoind_functioning(num_trial=100):
+
+    for i in xrange(num_trial):
+        result = cli("getinfo")
+        if result.succeeded:
+            return result
+        sleep(1)
+    raise AutoTestError('bitcoind not functioning')
+
 def reset_bitcoind():
 
     run("killall bitcoind")
@@ -51,11 +60,7 @@ def reset_bitcoind():
     # TODO: if bitcoind has problem, e.g. Error: OpenSSL lack support for
     # ECDSA, we should handle error?
     result = run("bitcoind -gcoin -daemon -port={}".format(PORT))
-    while True:
-        result = cli("getinfo")
-        if result.succeeded:
-            return result
-        sleep(1)
+    confirm_bitcoind_functioning()
 
 def add_peers():
 
@@ -65,16 +70,15 @@ def add_peers():
             cli("addnode", "{}:{}".format(host, PORT), 'add')
             cli("addnode", "{}:{}".format(host, PORT), 'onetry')
 
-def get_addresses():
+def get_addresses(num_trial=100):
 
-    while True:
+    for i in xrange(num_trial):
         result = cli("listwalletaddress", "-p", NUM_ADDRESSES)
         if result.succeeded:
-            break
+            result = json.loads(result)
+            return map(str, result)
         sleep(1)
-
-    result = json.loads(result)
-    return map(str, result)
+    raise AutoTestError('get address error')
 
 @parallel
 def setup_connections():
@@ -91,36 +95,41 @@ def setup_connections():
 
 def is_alliance(my_address):
 
-    with settings(warn_only=False):
-        result = cli("getmemberlist")
-        member_list = json.loads(result)['member_list']
+    result = cli("getmemberlist")
+    member_list = json.loads(result)['member_list']
 
-        return my_address in member_list
+    return my_address in member_list
 
-def wait_for_tx_confirmed(txid, flag_maturity=False, num_trial=10000):
+def wait_for_tx_confirmed(txid, flag_maturity=False):
     """ Keep pooling bitcoind to get tx's confirmations. """
 
-    with settings(warn_only=False):
-        for i in xrange(num_trial):
-            result = cli("getrawtransaction", txid, 1)
-            result = json.loads(result)
-            keys = map(str, result.keys())
-            if 'confirmations' in keys:
-                if not flag_maturity:
-                    return True
-                else:
-                    if int(result['confirmations']) >= MATURITY:
-                        return True
-            sleep(1)
+    if not txid.succeeded:
+        return
+    if not flag_maturity:
+        num_trial = 15 * 10
+    else:
+        num_trial = 15 * MATURITY * 10
 
-def wait_to_be_alliance(my_address, num_trial=10000):
+    for i in xrange(num_trial):
+        result = cli("getrawtransaction", txid, 1)
+        result = json.loads(result)
+        keys = map(str, result.keys())
+        if 'confirmations' in keys:
+            if not flag_maturity:
+                return
+            else:
+                if int(result['confirmations']) >= MATURITY:
+                    return
+        sleep(1)
+    raise AutoTestError('transaction not confirmed')
 
-    with settings(warn_only=False):
-        for i in xrange(num_trial):
-            if is_alliance(my_address):
-                return True
-            sleep(1)
-        return False
+def wait_to_be_alliance(my_address, num_trial=1000):
+
+    for i in xrange(num_trial):
+        if is_alliance(my_address):
+            return
+        sleep(1)
+    raise AutoTestError('alliance')
 
 @parallel
 @roles('alliance')
@@ -170,7 +179,8 @@ def alliance_track():
         return
 
     result = cli("mint", 1, 0)
-
+    if not result.succeeded:
+        return
     wait_for_tx_confirmed(result, True)
 
     peer, address = random_choose_an_address()
@@ -194,7 +204,8 @@ def activate_addresses(color):
     for i in xrange(NUM_ALL_ADDRESSES * 2):
         result = cli("mint", 1, color)
 
-    wait_for_tx_confirmed(result, True)
+    if result.succeeded:
+        wait_for_tx_confirmed(result, True)
 
     my_license_address = get_my_license_address(color)
 
@@ -202,7 +213,8 @@ def activate_addresses(color):
         for addr in addr_list:
             result = cli("sendfrom", my_license_address, addr, 1, color)
 
-    wait_for_tx_confirmed(result)
+    if result.succeeded:
+        wait_for_tx_confirmed(result)
 
 def check_license():
 
@@ -229,7 +241,8 @@ def issuer_track():
 
     for color in my_licenses:
         result = cli("mint", MINT_AMOUNT, color)
-    wait_for_tx_confirmed(result, True)
+    if result.succeeded:
+        wait_for_tx_confirmed(result, True)
 
 def normal_track():
 
@@ -237,6 +250,7 @@ def normal_track():
     balance = json.loads(result)
 
     peer, address = random_choose_an_address()
+
     # if no balance then return
     if balance == {}:
         return
@@ -246,7 +260,8 @@ def normal_track():
     money = int(money)
     money_out = money / 2
     result = cli("sendtoaddress", address, money_out, color)
-    wait_for_tx_confirmed(result)
+    if result.succeeded:
+        wait_for_tx_confirmed(result)
 
 @parallel
 def running():
