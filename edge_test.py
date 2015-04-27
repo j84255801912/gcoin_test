@@ -7,11 +7,11 @@
 
 import inspect
 import json
+import os
 import random
 import sys
 import time
 
-from os.path import expanduser
 from subprocess import Popen, PIPE, STDOUT, call
 
 EXIT_FAILURE = 1
@@ -85,21 +85,27 @@ class EdgeTest(object):
 
         code, out = rpc_calls("listwalletaddress", "-p")
         self.wallet_address = json.loads(out)
-        print "%s : done" % (inspect.stack()[0][3],)
+#        print "%s...done" % (inspect.stack()[0][3],)
 
     def reset_bitcoind(self):
 
-        return_code = call(["killall", "-9", "bitcoind"])
+        # note: stdout&stderr is redirected to /dev/null,
+        # which makes debug more difficult
+        with open(os.devnull, 'wb') as dev_null:
+            return_code = call(["killall", "-9", "bitcoind"],
+                               stdout=dev_null, stderr=dev_null)
 
-        time.sleep(3)
+            time.sleep(3)
 
-        return_code = call(["rm", "-rf", expanduser("~") + "/.bitcoin/gcoin"])
-        return_code = call(["bitcoind", "-gcoin", "-daemon"])
-        if return_code == 0:
-            print "Resetting bitcoind...done"
-            return True
-        else:
-            return False
+            return_code = call(["rm", "-rf",
+                                os.path.expanduser("~") + "/.bitcoin/gcoin"],
+                                stdout=dev_null, stderr=dev_null)
+            return_code = call(["bitcoind", "-gcoin", "-daemon"],
+                                stdout=dev_null, stderr=dev_null)
+            if return_code == 0:
+                return True
+            else:
+                return False
 
     def reset_and_be_alliance(self, num_trial=10):
 
@@ -471,15 +477,30 @@ class EdgeTest(object):
         return pass_or_not
 
     def __init__(self):
+        test_name = [
+                     'mint_without_license',
+                     'mint_amount_test',
+                     'usable_color_test',
+                     'nonmember_transactions',
+                     'coins_transfer_test'
+                    ]
 
-        test_name = ['mint_without_license', 'mint_amount_test',
-                     'usable_color_test', 'nonmember_transactions',
-                     'coins_transfer_test']
         result = []
-        for func_name in test_name:
+        for i in xrange(len(test_name)):
+            func_name = test_name[i]
             func = getattr(self, func_name)
+            print "{}/{} {}...".format(i+1, len(test_name), func_name)
             result.append(func())
-        print result
+
+        print "\n\nResult\n============================="
+        for i in xrange(len(test_name)):
+            print test_name[i] + '...',
+            if False not in result[i]:
+                print "Pass!"
+                continue
+            print "Fail in case:",
+            print ' '.join([str(j) for j in xrange(len(result[i]))
+                                   if result[i][j] != True])
 
 if __name__ == "__main__":
     t = EdgeTest()
