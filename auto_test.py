@@ -145,20 +145,19 @@ def set_alliance():
     # is alliance head, setgenerate to be alliance
     if my_pos == 0:
         result = cli("setgenerate", "true")
-
-        sleep(5)
-
-        if not is_alliance(my_address):
-            raise AutoTestError('alliance head')
+        wait_to_be_alliance(my_address, num_trial=60)
 
     wait_to_be_alliance(my_address)
     cli("setgenerate", "true")
 
     num_alliances = len(env.roledefs['alliance'])
-    for i in range(my_pos + 1, num_alliances):
+
+    for i in xrange(num_alliances * 2):
         result = cli("mint", 1, 0)
+    if result.succeeded:
         wait_for_tx_confirmed(result, True)
 
+    for i in xrange(my_pos + 1, num_alliances):
         candidate_address = addresses[env.hosts[i]][0]
         result = cli("sendvotetoaddress", candidate_address)
 
