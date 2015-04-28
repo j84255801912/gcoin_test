@@ -35,7 +35,7 @@ class AutoTestError(Exception):
 
     def __init__(self, message):
 
-        super(AutoTestError, self).__init__(message)
+        super(AutoTestError, self).__init__(env.host + ' ' + message)
 
 def cli(*args, **kwargs):
     return run("bitcoin-cli -gcoin " + ' '.join(map(str, args)))
@@ -51,7 +51,7 @@ def confirm_bitcoind_functioning(num_trial=100):
 
 def reset_bitcoind():
 
-    run("killall bitcoind")
+    run("killall bitcoind -9")
 
     sleep(3)
 
