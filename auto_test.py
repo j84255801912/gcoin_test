@@ -60,6 +60,7 @@ def reset_bitcoind():
     # TODO: if bitcoind has problem, e.g. Error: OpenSSL lack support for
     # ECDSA, we should handle error?
     result = run("bitcoind -gcoin -daemon -port={}".format(PORT))
+
     confirm_bitcoind_functioning()
 
 def add_peers():
@@ -123,13 +124,45 @@ def wait_for_tx_confirmed(txid, flag_maturity=False):
         sleep(1)
     raise AutoTestError('transaction not confirmed')
 
-def wait_to_be_alliance(my_address, num_trial=1000):
+def wait_to_be_alliance(my_address, num_trial=240):
 
     for i in xrange(num_trial):
         if is_alliance(my_address):
             return
         sleep(1)
     raise AutoTestError('alliance')
+
+def let_me_be_alliance(my_pos, my_address):
+
+    # is alliance head, setgenerate to be alliance
+    if my_pos == 0:
+        result = cli("setgenerate", "true")
+        if not result.succeeded or result == 'false':
+            raise AutoTestError('being alliance failed')
+        wait_to_be_alliance(my_address, num_trial=60)
+
+        #XXX sleep for a long time to ensure that everyone acknowledge
+        #    the first alliance
+        sleep(10)
+    else:
+        wait_to_be_alliance(my_address)
+        result = cli("setgenerate", "true")
+        if not result.succeeded or result == 'false':
+            raise AutoTestError('being alliance failed')
+
+def let_others_be_alliance(my_pos, my_address):
+
+    num_alliances = len(env.roledefs['alliance'])
+    for i in xrange(num_alliances * 2):
+        result = cli("mint", 1, 0)
+    if result.succeeded:
+        wait_for_tx_confirmed(result, True)
+
+    for i in xrange(my_pos + 1, num_alliances):
+        candidate_address = addresses[env.hosts[i]][0]
+        result = cli("sendvotetoaddress", candidate_address)
+
+        wait_to_be_alliance(candidate_address)
 
 @parallel
 @roles('alliance')
@@ -142,26 +175,8 @@ def set_alliance():
     my_pos = env.roledefs['alliance'].index(env.host)
     my_address = addresses[env.host][0]
 
-    # is alliance head, setgenerate to be alliance
-    if my_pos == 0:
-        result = cli("setgenerate", "true")
-        wait_to_be_alliance(my_address, num_trial=60)
-
-    wait_to_be_alliance(my_address)
-    cli("setgenerate", "true")
-
-    num_alliances = len(env.roledefs['alliance'])
-
-    for i in xrange(num_alliances * 2):
-        result = cli("mint", 1, 0)
-    if result.succeeded:
-        wait_for_tx_confirmed(result, True)
-
-    for i in xrange(my_pos + 1, num_alliances):
-        candidate_address = addresses[env.hosts[i]][0]
-        result = cli("sendvotetoaddress", candidate_address)
-
-        wait_to_be_alliance(candidate_address)
+    let_me_be_alliance(my_pos, my_address)
+    let_others_be_alliance(my_pos, my_address)
 
 def random_choose_an_address():
 
