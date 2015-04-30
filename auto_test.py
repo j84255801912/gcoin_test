@@ -68,7 +68,8 @@ def reset_bitcoind():
 
     # TODO: if bitcoind has problem, e.g. Error: OpenSSL lack support for
     # ECDSA, we should handle error?
-    result = run("bitcoind -gcoin -daemon -port={} -logip -debug".format(PORT))
+    result = run("bitcoind -gcoin -daemon -port={} -logip -debug\
+                  -txindex".format(PORT))
     if result.failed:
         AutoTestError("bitcoind launch failed")
 
@@ -262,7 +263,7 @@ def get_my_license_address(color):
     result = json.loads(result)
     return result[str(color)]["address"]
 
-def send_from_to_all_addresses(from_address, color, num_trial=10):
+def send_from_to_all_addresses(from_address, color, num_trial=20):
 
     for host, addr_list in addresses.items():
         for addr in addr_list:
@@ -272,6 +273,8 @@ def send_from_to_all_addresses(from_address, color, num_trial=10):
                 if result.succeeded:
                     break
                 result = cli("sendfrom", from_address, addr, 1, color)
+                sleep(1)
+            sleep(0.5)
 
     if result.succeeded:
         wait_for_tx_confirmed(result)
@@ -307,6 +310,7 @@ def mint_all_i_can_mint(my_licenses):
 
     for color in my_licenses:
         result = cli("mint", MINT_AMOUNT, color)
+        sleep(0.5)
     if result.succeeded:
         wait_for_tx_confirmed(result, True)
 
