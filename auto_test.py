@@ -3,19 +3,22 @@
 
 import json
 import random
+import sys
+import thread
 
-from time import sleep
+from time import sleep, time
 
 from fabric.api import *
 from fabric.context_managers import hide
 from fabric.tasks import execute
+from fabric.operations import get
 
 from setting import user, password
 
-env.hosts = ["127.0.0.1", "140.112.29.201", "core1.diqi.us", "core2.diqi.us", "core3.diqi.us", "core4.diqi.us"]
-#env.hosts = ["127.0.0.1"]
+env.hosts = ["core1.diqi.us", "core2.diqi.us", "127.0.0.1"]
 env.roledefs = {
-    "alliance":   env.hosts,
+    "alliance":     env.hosts,
+    "monitor" :     [env.hosts[0]]
 }
 
 env.user = user
@@ -25,11 +28,12 @@ env.password = password
 addresses = {}
 licenses = {}
 
-NUM_ADDRESSES = 10
-PORT = 55777
+NUM_ADDRESSES = 100
+PORT = 55888
 MATURITY = 11
 NUM_COLORS = 1000
 MINT_AMOUNT = 1000
+SAFE_SLEEP = True
 
 class AutoTestError(Exception):
 
@@ -37,6 +41,22 @@ class AutoTestError(Exception):
 
         super(AutoTestError, self).__init__(str(env.host) + ' ' + str(message))
 
+#tx_count = [0] * len(env.hosts)
+def feature_tx_counting(func):
+
+    def decorating(*args, **kwargs):
+
+        result = func(*args, **kwargs)
+        '''
+        if 'sendtoaddress' in args or 'sendlicensetoaddress' in args or\
+           'mint' in args or 'sendvotetoaddress' in args:
+            tx_count[env.hosts.index(env.host)] += 1
+        '''
+        return result
+
+    return decorating
+
+@feature_tx_counting
 def cli(*args, **kwargs):
 
     result = run("bitcoin-cli -gcoin " + ' '.join(map(str, args)))
@@ -113,6 +133,14 @@ def is_alliance(my_address):
 
     return my_address in member_list
 
+def sleep_for_broadcast(func):
+
+    def decorating(*args, **kwargs):
+        func(*args, **kwargs)
+        sleep(15 if 'flag_maturity' in kwargs else 3)
+    return decorating
+
+@sleep_for_broadcast
 def wait_for_tx_confirmed(txid, flag_maturity=False):
     """ Keep pooling bitcoind to get tx's confirmations. """
 
@@ -148,19 +176,21 @@ def let_me_be_alliance(my_pos, my_address):
 
     # is alliance head, setgenerate to be alliance
     if my_pos == 0:
-        result = cli("setgenerate", "true")
+        result = cli("setgenerate", "true", 1)
         if result.failed or result == 'false':
             raise AutoTestError('being alliance failed')
         wait_to_be_alliance(my_address, num_trial=60)
 
         #XXX sleep for a long time to ensure that everyone acknowledge
         #    the first alliance
-        sleep(10)
+        if SAFE_SLEEP:
+            sleep(10)
     else:
         wait_to_be_alliance(my_address)
         #XXX magic
-        sleep(10)
-        result = cli("setgenerate", "true")
+        if SAFE_SLEEP:
+            sleep(10)
+        result = cli("setgenerate", "true", 1)
         if result.failed or result == 'false':
             raise AutoTestError('being alliance failed')
 
@@ -169,7 +199,7 @@ def get_mint_funds(color, number):
     for i in xrange(number):
         result = cli("mint", 1, color)
     if result.succeeded:
-        wait_for_tx_confirmed(result, True)
+        wait_for_tx_confirmed(result, flag_maturity=True)
 
 def let_others_be_alliance(my_pos, my_address):
 
@@ -253,7 +283,7 @@ def alliance_track(count):
     result = cli("mint", 1, 0)
     if result.failed:
         return
-    wait_for_tx_confirmed(result, True)
+    wait_for_tx_confirmed(result, flag_maturity=True)
 
     random_send_an_random_license()
 
@@ -274,7 +304,8 @@ def send_from_to_all_addresses(from_address, color, num_trial=20):
                     break
                 result = cli("sendfrom", from_address, addr, 1, color)
                 sleep(1)
-            sleep(0.5)
+            if SAFE_SLEEP:
+                sleep(1)
 
     if result.succeeded:
         wait_for_tx_confirmed(result)
@@ -302,7 +333,8 @@ def check_license():
         if color not in licenses[env.host]:
             licenses[env.host].append(color)
             # XXX
-            sleep(15)
+            if SAFE_SLEEP:
+                sleep(30)
 
             activate_addresses(color)
 
@@ -310,9 +342,8 @@ def mint_all_i_can_mint(my_licenses):
 
     for color in my_licenses:
         result = cli("mint", MINT_AMOUNT, color)
-        sleep(0.5)
     if result.succeeded:
-        wait_for_tx_confirmed(result, True)
+        wait_for_tx_confirmed(result, flag_maturity=True)
 
 
 def issuer_track():
@@ -357,29 +388,12 @@ def running():
 
     count = 0
     while True:
-        print "======== {}th round ========".format(count + 1)
         my_address = addresses[env.host][0]
         if is_alliance(my_address):
             alliance_track(count)
         issuer_track()
         normal_track()
         count += 1
-
-def testing():
-
-    result = cli("getinfo")
-    return result
-
-def test():
-
-    return testing()
-
-@parallel
-def test_now():
-
-    i = 0
-    i += 1
-    print i
 
 @parallel
 def get_debug_log_error():
@@ -396,16 +410,51 @@ def see_all_debug_error():
         print "======================================"
         print value
 
+def print_tps():
 
-if __name__ == '__main__':
+    start_time = time()
 
-    with settings(hide(), warn_only=True):
+    while 1:
+        elapsed_time = time() - start_time
+        if elapsed_time != 0:
+            print "tps: {} tx/sec".format(sum(tx_count) / elapsed_time)
+        sleep(10)
+
+def testing():
+
+    result = cli("getinfo")
+    return result
+
+@parallel
+def hey():
+
+    print "fuck"
+
+@roles('monitor')
+#@parallel
+def hello():
+
+    execute(hey)
+
+def monitor():
+
+    start_time = time()
+    execute(hello)
+
+def get_debug_log(log_dir):
+
+    return get(remote_path="/home/kevin/.bitcoin/gcoin/debug*.log", local_path='.')
+
+def run_test():
+
+    with settings(hide(), warn_only=False):
         print "Setting up connections and get addresses..."
         addresses = execute(setup_connections)
         print "Setting up alliance..."
         execute(set_alliance)
         print "Start running auto test..."
         execute(running)
-    '''
-    see_all_debug_error()
-    '''
+
+if __name__ == '__main__':
+
+    run_test()
