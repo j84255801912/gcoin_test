@@ -15,25 +15,23 @@ from fabric.operations import get
 
 from setting import user, password
 
-env.hosts = ["core1.diqi.us", "core2.diqi.us", "127.0.0.1"]
-env.roledefs = {
-    "alliance":     env.hosts,
-    "monitor" :     [env.hosts[0]]
-}
-
 env.user = user
 env.password = password
 
+env.hosts = ["core1.diqi.us", "core2.diqi.us", "127.0.0.1"]
+env.roledefs = {
+    "alliance":     env.hosts,
+}
+
+MATURITY = 11 # num of blocks that the coinbase tx need to become spendable
+NUM_ADDRESSES = 100 # num of address per host
+PORT = 55888 # the port the hosts listen to
+NUM_COLORS = 1000 # num of color you want to use
+MINT_AMOUNT = 1000 # the mint amount per mint transaction
+SAFE_SLEEP = True
 
 addresses = {}
 licenses = {}
-
-NUM_ADDRESSES = 100
-PORT = 55888
-MATURITY = 11
-NUM_COLORS = 1000
-MINT_AMOUNT = 1000
-SAFE_SLEEP = True
 
 class AutoTestError(Exception):
 
@@ -88,8 +86,8 @@ def reset_bitcoind():
 
     # TODO: if bitcoind has problem, e.g. Error: OpenSSL lack support for
     # ECDSA, we should handle error?
-    result = run("bitcoind -gcoin -daemon -port={} -logip -debug\
-                  -txindex".format(PORT))
+    result = run("bitcoind -gcoin -daemon -port={0} -logip -debug \
+                 -txindex".format(PORT))
     if result.failed:
         AutoTestError("bitcoind launch failed")
 
@@ -309,7 +307,6 @@ def send_from_to_all_addresses(from_address, color, num_trial=20):
 
     if result.succeeded:
         wait_for_tx_confirmed(result)
-
 
 def activate_addresses(color):
 
