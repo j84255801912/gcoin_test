@@ -93,11 +93,19 @@ def reset_bitcoind():
 
     confirm_bitcoind_functioning()
 
+def get_host_from_envhost(host):
+
+    at_pos = host.find('@')
+    if at_pos != -1:
+        host = host[at_pos + 1:]
+    return host
+
 def add_peers():
 
     for host in env.hosts:
         # add peers except for myself
         if host != env.host:
+            host = get_host_from_envhost(host)
             cli("addnode", "{}:{}".format(host, PORT), 'add')
             cli("addnode", "{}:{}".format(host, PORT), 'onetry')
 
@@ -135,7 +143,10 @@ def sleep_for_broadcast(func):
 
     def decorating(*args, **kwargs):
         func(*args, **kwargs)
-        sleep(15 if 'flag_maturity' in kwargs else 3)
+        sleep(15 if 'flag_maturity' in kwargs.keys() and
+                 kwargs['flag_maturity'] == True
+              else 3)
+
     return decorating
 
 @sleep_for_broadcast
@@ -442,7 +453,7 @@ def get_debug_log(log_dir):
 
     return get(remote_path="/home/kevin/.bitcoin/gcoin/debug*.log", local_path='.')
 
-def run_test():
+if __name__ == '__main__':
 
     with settings(hide(), warn_only=False):
         print "Setting up connections and get addresses..."
@@ -451,7 +462,3 @@ def run_test():
         execute(set_alliance)
         print "Start running auto test..."
         execute(running)
-
-if __name__ == '__main__':
-
-    run_test()
