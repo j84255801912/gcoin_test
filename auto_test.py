@@ -15,20 +15,23 @@ from fabric.operations import get
 
 from setting import user, password
 
-env.user = user
-env.password = password
+#env.user = user
+#env.password = password
 
 env.hosts = ["core1.diqi.us", "core2.diqi.us", "127.0.0.1"]
+#env.passwords = {env.hosts[0]: "123", env.hosts[1]: "123", env.hosts[2]:"123"}
+
 env.roledefs = {
     "alliance":     env.hosts,
+    "monitor" :     [env.hosts[0]]
 }
 
 MATURITY = 11 # num of blocks that the coinbase tx need to become spendable
-NUM_ADDRESSES = 100 # num of address per host
+NUM_ADDRESSES = 50 # num of address per host
 PORT = 55888 # the port the hosts listen to
 NUM_COLORS = 1000 # num of color you want to use
 MINT_AMOUNT = 1000 # the mint amount per mint transaction
-SAFE_SLEEP = True
+SAFE_SLEEP = True # sleep for some time to ensure tx's confirmations.
 
 addresses = {}
 licenses = {}
@@ -37,9 +40,8 @@ class AutoTestError(Exception):
 
     def __init__(self, message):
 
-        super(AutoTestError, self).__init__(str(env.host) + ' ' + str(message))
+        super(AutoTestError, self).__init__(str(get_user_host()) + ' ' + str(message))
 
-#tx_count = [0] * len(env.hosts)
 def feature_tx_counting(func):
 
     def decorating(*args, **kwargs):
@@ -222,6 +224,10 @@ def let_others_be_alliance(my_pos, my_address):
 
         wait_to_be_alliance(candidate_address)
 
+def get_user_host():
+
+    return env.user + '@' + env.host
+
 @parallel
 @roles('alliance')
 def set_alliance():
@@ -230,6 +236,7 @@ def set_alliance():
         2. vote to the others alliance.
     """
 
+    env.host = get_user_host()
     my_pos = env.roledefs['alliance'].index(env.host)
     my_address = addresses[env.host][0]
 
@@ -245,6 +252,7 @@ def random_choose_an_address():
 def execute_or_not(count):
 
     # the first time we allow a license generated instantly.
+    env.host = get_user_host()
     if count == 0 and env.host == env.roledefs['alliance'][0]:
         return True
 
@@ -333,6 +341,7 @@ def check_license():
     """ check my all licenses and activate addresses if a new license arrives
     """
 
+    env.host = get_user_host()
     all_license = get_all_license()
     for i in all_license:
         color = int(i)
@@ -358,6 +367,7 @@ def issuer_track():
 
     check_license()
 
+    env.host = get_user_host()
     if env.host not in licenses.keys():
         return
 
@@ -394,6 +404,7 @@ def normal_track():
 @parallel
 def running():
 
+    env.host = get_user_host()
     count = 0
     while True:
         my_address = addresses[env.host][0]
@@ -436,9 +447,9 @@ def testing():
 @parallel
 def hey():
 
-    print "fuck"
+    print env.user+'@'+env.host
 
-@roles('monitor')
+#@roles('monitor')
 #@parallel
 def hello():
 
