@@ -217,13 +217,14 @@ def let_others_be_alliance(my_pos, my_address):
     get_mint_funds(0, num_alliances * 2)
 
     for i in xrange(my_pos + 1, num_alliances):
-        candidate_address = addresses[env.hosts[i]][0]
+        candidate_host = env.roledefs['alliance'][i]
+        candidate_address = addresses[candidate_host][0]
         result = cli("sendvotetoaddress", candidate_address)
 
         wait_to_be_alliance(candidate_address)
 
-@parallel
 @roles('alliance')
+@parallel
 def set_alliance():
     """
         1. let the alliance head become an alliance.
