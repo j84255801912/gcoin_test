@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import json
+import os
 import random
 import sys
-import thread
+import threading
 
 from time import sleep, time
 
@@ -18,17 +19,19 @@ from setting import user, password
 env.user = user
 env.password = password
 
-env.hosts = ["core1.diqi.us", "core2.diqi.us", "127.0.0.1"]
+env.hosts = ["127.0.0.1", "140.112.29.201", "core1.diqi.us", "core2.diqi.us"]
 env.roledefs = {
-    "alliance":     env.hosts,
+    "alliance"  :       env.hosts[1:],
+    "monitor"   :       [env.hosts[0]]
 }
 
 MATURITY = 11 # num of blocks that the coinbase tx need to become spendable
-NUM_ADDRESSES = 100 # num of address per host
+NUM_ADDRESSES = 50 # num of address per host
 PORT = 55888 # the port the hosts listen to
 NUM_COLORS = 1000 # num of color you want to use
-MINT_AMOUNT = 1000 # the mint amount per mint transaction
-SAFE_SLEEP = True
+MINT_AMOUNT = 10000 # the mint amount per mint transaction
+SAFE_SLEEP = True # sleep for a short time after each transaction conducted
+HIGH_TPS = False # boost the tps
 
 addresses = {}
 licenses = {}
@@ -39,22 +42,26 @@ class AutoTestError(Exception):
 
         super(AutoTestError, self).__init__(str(env.host) + ' ' + str(message))
 
-#tx_count = [0] * len(env.hosts)
-def feature_tx_counting(func):
+class RedirectStreams(object):
 
-    def decorating(*args, **kwargs):
+    def __init__(self, stdout=None, stderr=None):
 
-        result = func(*args, **kwargs)
-        '''
-        if 'sendtoaddress' in args or 'sendlicensetoaddress' in args or\
-           'mint' in args or 'sendvotetoaddress' in args:
-            tx_count[env.hosts.index(env.host)] += 1
-        '''
-        return result
+        self._stdout = stdout or sys.stdout
+        self._stderr = stderr or sys.stderr
 
-    return decorating
+    def __enter__(self):
 
-@feature_tx_counting
+        self.old_stdout, self.old_stderr = sys.stdout, sys.stderr
+        self.old_stdout.flush()
+        self.old_stderr.flush()
+        sys.stdout, sys.stderr = self._stdout, self._stderr
+
+    def __exit__(self, exc_type, exc_value, traceback):
+
+        self._stdout.flush()
+        self._stderr.flush()
+        sys.stdout, sys.stderr = self.old_stdout, self.old_stderr
+
 def cli(*args, **kwargs):
 
     result = run("bitcoin-cli -gcoin " + ' '.join(map(str, args)))
@@ -419,47 +426,95 @@ def see_all_debug_error():
         print "======================================"
         print value
 
-def print_tps():
+def print_tps(output_file):
+
+    sleep(1)
+    sleep_time = 10
 
     start_time = time()
+    last_block_height = 0
+    cumulate_tx_count = 0
+    count = 0
 
     while 1:
-        elapsed_time = time() - start_time
-        if elapsed_time != 0:
-            print "tps: {} tx/sec".format(sum(tx_count) / elapsed_time)
-        sleep(10)
+        sleep(sleep_time)
+        elapsed_time = int(time() - start_time)
 
-def testing():
+        result = cli('getblockcount')
+        now_block_height = int(result)
 
-    result = cli("getinfo")
-    return result
+        recent_cumulate_tx_count = 0
+        while now_block_height > last_block_height:
+            block_hash = cli('getblockhash', now_block_height)
+            block_data = cli('getblock', block_hash)
+            block_data = json.loads(block_data)
+            recent_cumulate_tx_count += len(block_data[u'tx'])
+            last_block_height += 1
+        last_block_height = now_block_height
 
-@parallel
-def hey():
+        cumulate_tx_count += recent_cumulate_tx_count
 
-    print "fuck"
+        result = cli('getrawmempool')
+        mempool_tx = json.loads(result)
+        mempool_tx_count = len(mempool_tx)
+
+        output_file.write("\n%s\n=========================\n" % env.host)
+        formatter = "tps\tlast_{}_sec_tps\tblocks\tmempool_txs\n"
+        output_file.write(formatter.format(sleep_time))
+        formatter = "{}\t{}\t{}\t{}\n"
+        output_file.write(formatter.format(
+                    round(cumulate_tx_count / float(elapsed_time), 2),
+                    round(recent_cumulate_tx_count / float(sleep_time), 2),
+                    now_block_height,
+                    mempool_tx_count))
+        last_block_height = now_block_height
 
 @roles('monitor')
-#@parallel
-def hello():
+@parallel
+def setup_monitor(output_file):
 
-    execute(hey)
-
-def monitor():
-
-    start_time = time()
-    execute(hello)
+    execute(print_tps, output_file)
 
 def get_debug_log(log_dir):
 
     return get(remote_path="/home/kevin/.bitcoin/gcoin/debug*.log", local_path='.')
 
+@parallel
+def test(ha):
+
+    print ha
+    '''
+    f1 = open('out', 'a')
+    f2 = open('err', 'a')
+    result = run('ddddd', stdout=f1, stderr=f2)
+    '''
+
 if __name__ == '__main__':
 
-    with settings(hide(), warn_only=False):
+    mode = raw_input("High tps mode? (y/n):[n] ")
+    safe_sleep = raw_input("Safe sleep? (y/n):[y] ")
+    if mode.find('y') != -1:
+        HIGH_TPS = True
+    if safe_sleep.find('n') != -1:
+        SAFE_SLEEP = False
+
+    with settings(hide(), warn_only=False),\
+        open('stdout', 'w') as stdout_file,\
+        open('stderr', 'w') as stderr_file,\
+        open('tps', 'w') as tps_file:
+
         print "Setting up connections and get addresses..."
-        addresses = execute(setup_connections)
+        with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
+            addresses = execute(setup_connections)
+
         print "Setting up alliance..."
-        execute(set_alliance)
+        with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
+            execute(set_alliance)
+
+        t = threading.Thread(target = setup_monitor, args=(sys.stdout,)).start()
+
         print "Start running auto test..."
-        execute(running)
+        with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
+            execute(running)
+
+
