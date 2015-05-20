@@ -93,8 +93,8 @@ def reset_bitcoind():
 
     # TODO: if bitcoind has problem, e.g. Error: OpenSSL lack support for
     # ECDSA, we should handle error?
-    result = run("bitcoind -gcoin -daemon -port={0} -logip -debug \
-                 -txindex".format(PORT))
+    result = run("bitcoind -gcoin -daemon -port={0} ".format(PORT) +
+                 "-logip -debug -txindex")
     if result.failed:
         AutoTestError("bitcoind launch failed")
 
@@ -260,6 +260,10 @@ def execute_or_not(count):
     prob_send_license = 40
     if random.randint(1, prob_send_license) != 1:
         return False
+    # XXX for safety, not allowing too much license generated
+    if count > 200:
+        return False
+
     return True
 
 def get_all_license():
@@ -382,7 +386,7 @@ def random_send_money(balance):
     money = int(money)
     if color == 0:
         return
-    money_out = money / 2
+    money_out = money / 10
     if money_out == 0:
         return
     result = cli("sendtoaddress", address, money_out, color)
@@ -408,13 +412,16 @@ def running():
         if is_alliance(my_address):
             alliance_track(count)
         issuer_track()
-        normal_track()
+        for i in xrange(1000 if HIGH_TPS else 1):
+            normal_track()
         count += 1
 
 @parallel
 def get_debug_log_error():
 
-    result = run('egrep \'(error|ERROR)\' ~/.bitcoin/gcoin/debug_* | awk \'{$1="";$2=""; print}\' | sort | uniq')
+    command = 'egrep \'(error|ERROR)\' ~/.bitcoin/gcoin/debug_* | '
+    command += 'awk \'{$1="";$2=""; print}\' | sort | uniq'
+    result = run(command)
     return result
 
 def see_all_debug_error():
