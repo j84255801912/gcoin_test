@@ -354,10 +354,11 @@ def check_license():
 
 def mint_all_i_can_mint(my_licenses):
 
-    for color in my_licenses:
-        result = cli("mint", MINT_AMOUNT, color)
-    if result.succeeded:
-        wait_for_tx_confirmed(result, flag_maturity=True)
+    for i in xrange(100 if HIGH_TPS else 1):
+        for color in my_licenses:
+            result = cli("mint", MINT_AMOUNT, color)
+        if result.succeeded:
+            wait_for_tx_confirmed(result, flag_maturity=True)
 
 def issuer_track():
 
@@ -513,9 +514,6 @@ def parsing_hosts():
 if __name__ == '__main__':
 
     parsing_hosts()
-
-    t = threading.Thread(target = setup_monitor, args=(sys.stdout,))
-    t.start()
 
     reset_blockchain = raw_input("reset block chain and connections?(y/n):[y] ")
     if reset_blockchain.find('n') != -1:
