@@ -32,6 +32,7 @@ NUM_COLORS = 1000 # num of color you want to use
 MINT_AMOUNT = 10000 # the mint amount per mint transaction
 SAFE_SLEEP = True # sleep for a short time after each transaction conducted
 HIGH_TPS = False # boost the tps
+RESET_BLOCKCHAIN = True
 
 addresses = {}
 licenses = {}
@@ -40,7 +41,9 @@ class AutoTestError(Exception):
 
     def __init__(self, message):
 
-        super(AutoTestError, self).__init__(str(env.host) + ' ' + str(message))
+        if env.host is not None:
+            message = str(env.host) + ' ' + message
+        super(AutoTestError, self).__init__(message)
 
 class RedirectStreams(object):
 
@@ -82,23 +85,23 @@ def confirm_bitcoind_functioning(num_trial=20):
         sleep(1)
     raise AutoTestError('bitcoind not functioning')
 
+@parallel
 def reset_bitcoind():
 
-    run("killall bitcoind -9")
+    with settings(warn_only=True):
+        run("killall bitcoind -9")
 
-    # XXX : magic
-    sleep(3)
+        # XXX : magic
+        sleep(3)
 
-    run("rm -rf $HOME/.bitcoin/gcoin")
+        run("rm -rf $HOME/.bitcoin/gcoin")
 
-    # TODO: if bitcoind has problem, e.g. Error: OpenSSL lack support for
-    # ECDSA, we should handle error?
-    result = run("bitcoind -gcoin -daemon -port={0} ".format(PORT) +
-                 "-logip -debug -txindex")
-    if result.failed:
-        AutoTestError("bitcoind launch failed")
-
-    confirm_bitcoind_functioning()
+        # TODO: if bitcoind has problem, e.g. Error: OpenSSL lack support for
+        # ECDSA, we should handle error?
+        result = run("bitcoind -gcoin -daemon -port={0} ".format(PORT) +
+                     "-logip -debug -txindex")
+        if result.failed:
+            AutoTestError("bitcoind launch failed")
 
 def get_host_from_envhost(host):
 
@@ -135,7 +138,8 @@ def setup_connections():
     """
 
     with settings(warn_only=True):
-        reset_bitcoind()
+
+        confirm_bitcoind_functioning()
         add_peers()
         return get_addresses()
 
@@ -282,7 +286,7 @@ def possible_license_transfer(color):
         return True
     return False
 
-def random_send_an_random_license():
+def random_send_random_license():
 
     peer, address = random_choose_an_address()
     color = random.randint(1, NUM_COLORS)
@@ -306,7 +310,7 @@ def alliance_track(count):
         return
     wait_for_tx_confirmed(result, flag_maturity=True)
 
-    random_send_an_random_license()
+    random_send_random_license()
 
 def get_my_license_address(color):
 
@@ -352,7 +356,7 @@ def check_license():
             licenses[env.host] = []
         if color not in licenses[env.host]:
             licenses[env.host].append(color)
-            # XXX
+            # XXX if run without reset bitcoind, we waste a lot of time here.
             if SAFE_SLEEP:
                 sleep(30)
 
@@ -364,7 +368,6 @@ def mint_all_i_can_mint(my_licenses):
         result = cli("mint", MINT_AMOUNT, color)
     if result.succeeded:
         wait_for_tx_confirmed(result, flag_maturity=True)
-
 
 def issuer_track():
 
@@ -386,7 +389,7 @@ def random_send_money(balance):
     money = int(money)
     if color == 0:
         return
-    money_out = money / 10
+    money_out = money / 5
     if money_out == 0:
         return
     result = cli("sendtoaddress", address, money_out, color)
@@ -395,13 +398,14 @@ def random_send_money(balance):
 
 def normal_track():
 
-    result = cli("getbalance")
-    balance = json.loads(result)
-    # if no balance then return
-    if balance == {}:
-        return
+    for i in xrange(100 if HIGH_TPS else 1):
+        result = cli("getbalance")
+        balance = json.loads(result)
+        # if no balance then return
+        if balance == {}:
+            return
 
-    random_send_money(balance)
+        random_send_money(balance)
 
 @parallel
 def running():
@@ -412,9 +416,11 @@ def running():
         if is_alliance(my_address):
             alliance_track(count)
         issuer_track()
-        for i in xrange(1000 if HIGH_TPS else 1):
-            normal_track()
+        normal_track()
         count += 1
+
+        # sleep for yielding cpu
+        sleep(1)
 
 @parallel
 def get_debug_log_error():
@@ -433,13 +439,17 @@ def see_all_debug_error():
         print "======================================"
         print value
 
+@roles('monitor')
 def print_tps(output_file):
 
     sleep(1)
+
     sleep_time = 10
 
     start_time = time()
-    last_block_height = 0
+    result = cli('getblockcount')
+    last_block_height = int(result)
+
     cumulate_tx_count = 0
     count = 0
 
@@ -496,32 +506,69 @@ def test(ha):
     result = run('ddddd', stdout=f1, stderr=f2)
     '''
 
+def parsing_hosts():
+
+    c = ConfigParser.ConfigParser(allow_no_value=True)
+    c.readfp(open('test.conf'))
+    if not(set(['user', 'password', 'alliance', 'others', 'monitor']) <=
+           set(c.sections())):
+        raise AutoTestError("Config file: missing sections")
+
+    env.user = c.items('user')[0][0]
+    env.password = c.items('password')[0][0]
+
+    env.roledefs['alliance'] = [i[0] for i in c.items('alliance')]
+    env.roledefs['others'] = [i[0] for i in c.items('others')]
+    env.roledefs['monitor'] = [i[0] for i in c.items('monitor')]
+    env.hosts = list(set(env.roledefs['alliance'] + env.roledefs['others']))
+
 if __name__ == '__main__':
 
+    parsing_hosts()
+
+    t = threading.Thread(target = setup_monitor, args=(sys.stdout,))
+    t.start()
+
+    reset_blockchain = raw_input("reset block chain and connections?(y/n):[y] ")
+    if reset_blockchain.find('n') != -1:
+        RESET_BLOCKCHAIN = False
     mode = raw_input("High tps mode? (y/n):[n] ")
-    safe_sleep = raw_input("Safe sleep? (y/n):[y] ")
+    if RESET_BLOCKCHAIN:
+        safe_sleep = raw_input("Safe sleep? (y/n):[y] ")
+    else:
+        safe_sleep = 'n'
+
+    multiple_color = raw_input("Mutiple colors? (y/n):[y] ")
+    NUM_ADDRESSES = raw_input("Number of addresses for each node?:[50] ") or 50
+    NUM_ADDRESSES = int(NUM_ADDRESSES)
     if mode.find('y') != -1:
         HIGH_TPS = True
     if safe_sleep.find('n') != -1:
         SAFE_SLEEP = False
+    if multiple_color.find('n') != -1:
+        NUM_COLORS = 1
 
     with settings(hide(), warn_only=False),\
-        open('stdout', 'w') as stdout_file,\
-        open('stderr', 'w') as stderr_file,\
-        open('tps', 'w') as tps_file:
+        open('stdout', 'w' if RESET_BLOCKCHAIN else 'a') as stdout_file,\
+        open('stderr', 'w' if RESET_BLOCKCHAIN else 'a') as stderr_file:
+
+        if RESET_BLOCKCHAIN:
+            print "Resetting bitcoind"
+            execute(reset_bitcoind)
 
         print "Setting up connections and get addresses..."
         with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
             addresses = execute(setup_connections)
 
-        print "Setting up alliance..."
-        with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
-            execute(set_alliance)
+        if RESET_BLOCKCHAIN:
+            print "Setting up alliance..."
+            with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
+                execute(set_alliance)
 
-        t = threading.Thread(target = setup_monitor, args=(sys.stdout,)).start()
+        if env.roledefs['monitor'] != []:
+            t = threading.Thread(target = setup_monitor, args=(sys.stdout,))
+            t.start()
 
         print "Start running auto test..."
         with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
             execute(running)
-
-
