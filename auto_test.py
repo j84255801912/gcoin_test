@@ -7,23 +7,14 @@ import random
 import sys
 import threading
 
+import ConfigParser
+
 from time import sleep, time
 
 from fabric.api import *
 from fabric.context_managers import hide
 from fabric.tasks import execute
 from fabric.operations import get
-
-from setting import user, password
-
-env.user = user
-env.password = password
-
-env.hosts = ["127.0.0.1", "140.112.29.201", "core1.diqi.us", "core2.diqi.us"]
-env.roledefs = {
-    "alliance"  :       env.hosts[1:],
-    "monitor"   :       [env.hosts[0]]
-}
 
 MATURITY = 11 # num of blocks that the coinbase tx need to become spendable
 NUM_ADDRESSES = 50 # num of address per host
@@ -210,7 +201,7 @@ def let_me_be_alliance(my_pos, my_address):
         #XXX magic
         if SAFE_SLEEP:
             sleep(10)
-        result = cli("setgenerate", "true", 1)
+        result = cli("setgenerate", "true", 2)
         if result.failed or result == 'false':
             raise AutoTestError('being alliance failed')
 
@@ -218,8 +209,7 @@ def get_mint_funds(color, number):
 
     for i in xrange(number):
         result = cli("mint", 1, color)
-    if result.succeeded:
-        wait_for_tx_confirmed(result, flag_maturity=True)
+    wait_for_tx_confirmed(result, flag_maturity=True)
 
 def let_others_be_alliance(my_pos, my_address):
 
@@ -265,7 +255,7 @@ def execute_or_not(count):
     if random.randint(1, prob_send_license) != 1:
         return False
     # XXX for safety, not allowing too much license generated
-    if count > 200:
+    if count > 1000:
         return False
 
     return True
@@ -486,8 +476,6 @@ def print_tps(output_file):
                     mempool_tx_count))
         last_block_height = now_block_height
 
-@roles('monitor')
-@parallel
 def setup_monitor(output_file):
 
     execute(print_tps, output_file)
