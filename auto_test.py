@@ -17,7 +17,7 @@ from fabric.tasks import execute
 from fabric.operations import get
 
 MATURITY = 11 # num of blocks that the coinbase tx need to become spendable
-NUM_ADDRESSES = 50 # num of address per host
+NUM_ADDRESSES = 10 # num of address per host
 PORT = 55888 # the port the hosts listen to
 NUM_COLORS = 1000 # num of color you want to use
 MINT_AMOUNT = 10000 # the mint amount per mint transaction
@@ -146,7 +146,7 @@ def sleep_for_broadcast(func):
     def decorating(*args, **kwargs):
         func(*args, **kwargs)
         sleep(15 if 'flag_maturity' in kwargs.keys() and
-                 kwargs['flag_maturity'] == True
+                 kwargs['flag_maturity'] == True and SAFE_SLEEP
               else 3)
 
     return decorating
@@ -194,14 +194,12 @@ def let_me_be_alliance(my_pos, my_address):
 
         #XXX sleep for a long time to ensure that everyone acknowledge
         #    the first alliance
-        if SAFE_SLEEP:
-            sleep(10)
+        sleep(10)
     else:
         wait_to_be_alliance(my_address)
         #XXX magic
-        if SAFE_SLEEP:
-            sleep(10)
-        result = cli("setgenerate", "true", 2)
+        sleep(10)
+        result = cli("setgenerate", "true")
         if result.failed or result == 'false':
             raise AutoTestError('being alliance failed')
 
@@ -250,12 +248,13 @@ def execute_or_not(count):
     if count == 0 and env.host == env.roledefs['alliance'][0]:
         return True
 
+    # XXX for safety, not allowing too much license generated
+    if count > 5000:
+        return False
+
     # this means 1/40 probability that gives out a license
     prob_send_license = 40
     if random.randint(1, prob_send_license) != 1:
-        return False
-    # XXX for safety, not allowing too much license generated
-    if count > 1000:
         return False
 
     return True
@@ -319,8 +318,6 @@ def send_from_to_all_addresses(from_address, color, num_trial=20):
                     break
                 result = cli("sendfrom", from_address, addr, 1, color)
                 sleep(1)
-            if SAFE_SLEEP:
-                sleep(1)
 
     if result.succeeded:
         wait_for_tx_confirmed(result)
@@ -347,8 +344,8 @@ def check_license():
         if color not in licenses[env.host]:
             licenses[env.host].append(color)
             # XXX if run without reset bitcoind, we waste a lot of time here.
-            if SAFE_SLEEP:
-                sleep(30)
+            if SAFE_SLEEP and not RESET_BLOCKCHAIN:
+                sleep(20)
 
             activate_addresses(color)
 
@@ -357,8 +354,8 @@ def mint_all_i_can_mint(my_licenses):
     for i in xrange(100 if HIGH_TPS else 1):
         for color in my_licenses:
             result = cli("mint", MINT_AMOUNT, color)
-        if result.succeeded:
-            wait_for_tx_confirmed(result, flag_maturity=True)
+    if result.succeeded:
+        wait_for_tx_confirmed(result, flag_maturity=True)
 
 def issuer_track():
 
@@ -393,7 +390,7 @@ def normal_track():
         result = cli("getbalance")
         balance = json.loads(result)
         # if no balance then return
-        if balance == {}:
+        if balance == {} or balance.keys() == ['0']:
             return
 
         random_send_money(balance)
@@ -511,6 +508,10 @@ def parsing_hosts():
     env.roledefs['monitor'] = [i[0] for i in c.items('monitor')]
     env.hosts = list(set(env.roledefs['alliance'] + env.roledefs['others']))
 
+def start_all_miner():
+
+    cli('setgenerate', 'true', 1)
+
 if __name__ == '__main__':
 
     parsing_hosts()
@@ -540,11 +541,14 @@ if __name__ == '__main__':
 
         if RESET_BLOCKCHAIN:
             print "Resetting bitcoind"
-            execute(reset_bitcoind)
+            with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
+                execute(reset_bitcoind)
 
         print "Setting up connections and get addresses..."
         with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
             addresses = execute(setup_connections)
+            if not RESET_BLOCKCHAIN:
+                execute(start_all_miner)
 
         if RESET_BLOCKCHAIN:
             print "Setting up alliance..."
