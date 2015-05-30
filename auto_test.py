@@ -252,7 +252,7 @@ def execute_or_not(count):
     if count > 5000:
         return False
 
-    # this means 1/40 probability that gives out a license
+    # this means 1/prob_send_license probability that gives out a license
     prob_send_license = 40
     if random.randint(1, prob_send_license) != 1:
         return False
@@ -351,8 +351,8 @@ def check_license():
 
 def mint_all_i_can_mint(my_licenses):
 
-    for i in xrange(100 if HIGH_TPS else 1):
-        for color in my_licenses:
+    for color in my_licenses:
+        for i in xrange(1000 if HIGH_TPS else 1):
             result = cli("mint", MINT_AMOUNT, color)
     if result.succeeded:
         wait_for_tx_confirmed(result, flag_maturity=True)
@@ -386,7 +386,7 @@ def random_send_money(balance):
 
 def normal_track():
 
-    for i in xrange(100 if HIGH_TPS else 1):
+    for i in xrange(20 if HIGH_TPS else 1):
         result = cli("getbalance")
         balance = json.loads(result)
         # if no balance then return
@@ -555,9 +555,11 @@ if __name__ == '__main__':
             with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
                 execute(set_alliance)
 
+        '''
         if env.roledefs['monitor'] != []:
             t = threading.Thread(target = setup_monitor, args=(sys.stdout,))
             t.start()
+        '''
 
         print "Start running auto test..."
         with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
