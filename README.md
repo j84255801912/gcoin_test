@@ -28,43 +28,46 @@ $ virtualenv .env
 
 ## Configuration
 ### Edge test
-Make sure that the machine you run on has installed gcoin, and the bitcoin.conf lays under ~/.bitcoin
+Make sure that the machine you run on has installed gcoin, and the bitcoin.conf lays under ``~/.bitcoin``
 
 ### Auto test
-#### Host
+#### Host and Roles
 ```
-vim edge_test.py
+vim test.conf
 ```
-Modify the list env.host to include your nodes domain name or ip.
+Modify the test.conf to include the hostname or ip you want.
 
 For example,
+```
+# fill in hosts acting as alliances.
+[alliance]
+core1.diqi.us
+127.0.0.1
+140.112.29.201
 
-env.hosts = ["core1.diqi.us", "core2.diqi.us", "127.0.0.1"]
+# fill in hosts acting as normal nodes.
+[others]
 
-#### Roles
-There are only two roles defined now, alliance  nodes and ordinary nodes.
-Modify the dictionary env.roledefs to define the role of your nodes. We can only add the alliance nodes to env.roledefs
-
-For example, I want "127.0.0.1" to be "alliance", and the others are "others".
-
-env.roledefs = {
-    "alliance":     [127.0.0.1]
-}
+# choose one from above to act as monitor.
+[monitor]
+140.112.29.201
+```
 
 #### User and Passwords
-Because fabric use ssh to manipulate nodes, we need the hosts' user & password.
+Fabric use ssh to manipulate nodes, thus we need the hosts' user & password.
 
 For convinience, All hosts should use the same user and password.
-Create a file named setting.py, and set user="your user name", password="the corresponding password"
 
 For example,
-in setting.py
+in test.conf
 ```
-user="kevin"
-password="123"
+[user]
+kevin
+[password]
+123
 ```
 
-It is ok that not using same user among hosts, and this section will be patched, soon.
+It is ok that not using same user among hosts, and tutorial for will be patched soon.
 
 #### Other configurations
 in auto_test.py
@@ -83,7 +86,16 @@ MINT_AMOUNT = 1000 # the mint amount per mint transaction
 $ python edge_test.py
 ```
 ### Auto test
-For easy monitoring, redirect stdout to the file stdout, and stderr to file stderr.
 ```
-(.env)$ python auto_test.py 1>stdout 2>stderr
+(.env)$ python auto_test.py
 ```
+The stdout and stderr will be redirected to files named stdout and stderr.
+
+## Trouble Shooting
+If the auto_test doesnt work correctly, you should confirm that the following settings are  right set.
+
+* firewall settings
+* dependency requirement
+* virtualenv
+* If hosts machines port is occupied by the others users?
+* Can the bitcoinds launch easily on hosts machines?
