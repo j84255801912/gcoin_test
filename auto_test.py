@@ -24,6 +24,7 @@ MINT_AMOUNT = 10000 # the mint amount per mint transaction
 SAFE_SLEEP = True # sleep for a short time after each transaction conducted
 HIGH_TPS = False # boost the tps
 RESET_BLOCKCHAIN = True
+ALLIANCE_FOCUS_ON_MINING = True
 
 addresses = {}
 licenses = {}
@@ -145,9 +146,10 @@ def sleep_for_broadcast(func):
 
     def decorating(*args, **kwargs):
         func(*args, **kwargs)
-        sleep(15 if 'flag_maturity' in kwargs.keys() and
-                 kwargs['flag_maturity'] == True and SAFE_SLEEP
-              else 3)
+        if SAFE_SLEEP:
+            sleep(15 if 'flag_maturity' in kwargs.keys() and
+                     kwargs['flag_maturity'] == True else 3
+            )
 
     return decorating
 
@@ -238,7 +240,10 @@ def set_alliance():
 
 def random_choose_an_address():
 
-    peer = random.choice(addresses.keys())
+    if ALLIANCE_FOCUS_ON_MINING:
+        peer = random.choice(env.roledefs['others'])
+    else:
+        peer = random.choice(addresses.keys())
     address = random.choice(addresses[peer])
     return peer, address
 
@@ -403,12 +408,13 @@ def running():
         my_address = addresses[env.host][0]
         if is_alliance(my_address):
             alliance_track(count)
-        issuer_track()
-        normal_track()
-        count += 1
+        if not is_alliance(my_address) or not ALLIANCE_FOCUS_ON_MINING:
+            issuer_track()
+            normal_track()
 
         # sleep for yielding cpu
         sleep(1)
+        count += 1
 
 @parallel
 def get_debug_log_error():
@@ -482,15 +488,6 @@ def get_debug_log(log_dir):
 
     return get(remote_path="/home/kevin/.bitcoin/gcoin/debug*.log", local_path='.')
 
-@parallel
-def test(ha):
-
-    print ha
-    '''
-    f1 = open('out', 'a')
-    f2 = open('err', 'a')
-    result = run('ddddd', stdout=f1, stderr=f2)
-    '''
 
 def parsing_hosts():
 
