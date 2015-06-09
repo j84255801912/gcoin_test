@@ -449,8 +449,8 @@ def print_tps(output_file):
         now_block_height = int(result)
 
         recent_cumulate_tx_count = 0
-        while now_block_height > last_block_height:
-            block_hash = cli('getblockhash', now_block_height)
+        while now_block_height >= last_block_height:
+            block_hash = cli('getblockhash', last_block_height)
             block_data = cli('getblock', block_hash)
             block_data = json.loads(block_data)
             recent_cumulate_tx_count += len(block_data[u'tx'])
