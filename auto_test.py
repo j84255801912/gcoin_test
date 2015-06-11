@@ -174,7 +174,7 @@ def wait_for_tx_confirmed(txid, flag_maturity=False):
             else:
                 if int(result['confirmations']) >= MATURITY:
                     return
-        sleep(1)
+        sleep(2)
     raise AutoTestError('transaction not confirmed')
 
 def wait_to_be_alliance(my_address, num_trial=240):
@@ -289,8 +289,8 @@ def random_send_random_license():
         return
 
     result = cli("sendlicensetoaddress", address, color)
-    if result.succeeded:
-        wait_for_tx_confirmed(result)
+#    if result.succeeded:
+#        wait_for_tx_confirmed(result)
 
 def alliance_track(count):
     """
@@ -324,8 +324,8 @@ def send_from_to_all_addresses(from_address, color, num_trial=20):
                 result = cli("sendfrom", from_address, addr, 1, color)
                 sleep(1)
 
-    if result.succeeded:
-        wait_for_tx_confirmed(result)
+#    if result.succeeded:
+#        wait_for_tx_confirmed(result)
 
 def activate_addresses(color):
 
@@ -359,8 +359,8 @@ def mint_all_i_can_mint(my_licenses):
     for color in my_licenses:
         for i in xrange(1000 if HIGH_TPS else 1):
             result = cli("mint", MINT_AMOUNT, color)
-    if result.succeeded:
-        wait_for_tx_confirmed(result, flag_maturity=True)
+#    if result.succeeded:
+#        wait_for_tx_confirmed(result, flag_maturity=True)
 
 def issuer_track():
 
@@ -386,8 +386,8 @@ def random_send_money(balance):
     if money_out == 0:
         return
     result = cli("sendtoaddress", address, money_out, color)
-    if result.succeeded:
-        wait_for_tx_confirmed(result)
+#    if result.succeeded:
+#        wait_for_tx_confirmed(result)
 
 def normal_track():
 
@@ -406,11 +406,13 @@ def running():
     count = 0
     while True:
         my_address = addresses[env.host][0]
-        if is_alliance(my_address):
-            alliance_track(count)
-        if not is_alliance(my_address) or not ALLIANCE_FOCUS_ON_MINING:
-            issuer_track()
-            normal_track()
+
+        with settings(warn_only=True):
+            if is_alliance(my_address):
+                alliance_track(count)
+            if not is_alliance(my_address) or not ALLIANCE_FOCUS_ON_MINING:
+                issuer_track()
+                normal_track()
 
         # sleep for yielding cpu
         sleep(1)
