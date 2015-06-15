@@ -90,7 +90,7 @@ def reset_bitcoind():
         # TODO: if bitcoind has problem, e.g. Error: OpenSSL lack support for
         # ECDSA, we should handle error?
         result = run("bitcoind -gcoin -daemon -port={0} ".format(PORT) +
-                     "-logip -debug -txindex")
+                     "-logip -debug")
         if result.failed:
             AutoTestError("bitcoind launch failed")
 
@@ -187,7 +187,7 @@ def let_me_be_alliance(my_pos, my_address):
 
     # is alliance head, setgenerate to be alliance
     if my_pos == 0:
-        result = cli("setgenerate", "true", 1)
+        result = cli("setgenerate", "true")
         if result.failed or result == 'false':
             raise AutoTestError('being alliance failed')
         wait_to_be_alliance(my_address, num_trial=60)
@@ -535,7 +535,7 @@ if __name__ == '__main__':
     if multiple_color.find('n') != -1:
         NUM_COLORS = 1
 
-    with settings(hide(), warn_only=False),\
+    with settings(hide(), warn_only=True),\
         open('stdout', 'w' if RESET_BLOCKCHAIN else 'a') as stdout_file,\
         open('stderr', 'w' if RESET_BLOCKCHAIN else 'a') as stderr_file:
 
