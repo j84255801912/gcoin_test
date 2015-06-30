@@ -20,7 +20,7 @@ MATURITY = 11 # num of blocks that the coinbase tx need to become spendable
 NUM_ADDRESSES = 10 # num of address per host
 PORT = 55888 # the port the hosts listen to
 NUM_COLORS = 1000 # num of color you want to use
-MINT_AMOUNT = 10000 # the mint amount per mint transaction
+MINT_AMOUNT = 100 # the mint amount per mint transaction
 SAFE_SLEEP = True # sleep for a short time after each transaction conducted
 HIGH_TPS = False # boost the tps
 RESET_BLOCKCHAIN = True
@@ -35,6 +35,7 @@ class AutoTestError(Exception):
         if env.host is not None:
             message = str(env.host) + ' ' + message
         super(AutoTestError, self).__init__(message)
+
 
 class RedirectStreams(object):
 
@@ -55,6 +56,7 @@ class RedirectStreams(object):
         self._stdout.flush()
         self._stderr.flush()
         sys.stdout, sys.stderr = self.old_stdout, self.old_stderr
+
 
 def cli(*args, **kwargs):
 
@@ -249,7 +251,7 @@ def execute_or_not(count):
         return True
 
     # XXX for safety, not allowing too much license generated
-    if count > 5000:
+    if count > 1000:
         return False
 
     # this means 1/prob_send_license probability that gives out a license
@@ -352,8 +354,12 @@ def check_license():
 def mint_all_i_can_mint(my_licenses):
 
     for color in my_licenses:
-        for i in xrange(1000 if HIGH_TPS else 1):
-            result = cli("mint", MINT_AMOUNT, color)
+        iterations = 1000 if HIGH_TPS else 1
+        result = run("for i in $(seq 1 %d);" % iterations +
+                     "do " +
+                     "bitcoin-cli -gcoin mint %d %d;" % (MINT_AMOUNT, color) +
+                     "done"
+                 )
 #    if result.succeeded:
 #        wait_for_tx_confirmed(result, flag_maturity=True)
 
@@ -485,7 +491,9 @@ def get_debug_log(log_dir):
 @parallel
 def test(ha):
 
-    print ha
+    result = run('for i in $(seq 1 10); do echo {}; done'.format(ha))
+    print result
+    #result = run('echo $RANDOM')
     '''
     f1 = open('out', 'a')
     f2 = open('err', 'a')
@@ -515,6 +523,8 @@ def start_all_miner():
 if __name__ == '__main__':
 
     parsing_hosts()
+
+    #execute(test, 'shit')
 
     reset_blockchain = raw_input("reset block chain and connections?(y/n):[y] ")
     if reset_blockchain.find('n') != -1:
@@ -555,12 +565,11 @@ if __name__ == '__main__':
             with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
                 execute(set_alliance)
 
-        '''
         if env.roledefs['monitor'] != []:
-            t = threading.Thread(target = setup_monitor, args=(sys.stdout,))
+            t = threading.Thread(name="monitor thread", target=setup_monitor, args=(sys.stdout,))
             t.start()
-        '''
 
         print "Start running auto test..."
         with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
             execute(running)
+
