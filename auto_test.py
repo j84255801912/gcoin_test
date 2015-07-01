@@ -468,13 +468,16 @@ def print_tps(output_file):
             block_data = json.loads(block_data)
             recent_cumulate_tx_count += len(block_data[u'tx'])
             last_block_height += 1
-        last_block_height = now_block_height
 
         cumulate_tx_count += recent_cumulate_tx_count
 
+        '''
         result = cli('getrawmempool')
         mempool_tx = json.loads(result)
         mempool_tx_count = len(mempool_tx)
+        '''
+        result = cli('getrawmempool', '|', 'wc', '-l')
+        mempool_tx_count = int(result) - 2
 
         output_file.write("\n%s\n=========================\n" % env.host)
         formatter = "tps\tlast_{}_sec_tps\tblocks\tmempool_txs\n"
@@ -485,7 +488,6 @@ def print_tps(output_file):
                     round(recent_cumulate_tx_count / float(sleep_time), 2),
                     now_block_height,
                     mempool_tx_count))
-        last_block_height = now_block_height
 
 def setup_monitor(output_file):
 
