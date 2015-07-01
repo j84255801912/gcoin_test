@@ -24,6 +24,7 @@ MINT_AMOUNT = 100 # the mint amount per mint transaction
 SAFE_SLEEP = True # sleep for a short time after each transaction conducted
 HIGH_TPS = False # boost the tps
 RESET_BLOCKCHAIN = True
+ALLIANCE_FOCUS_ON_MINING = True
 
 addresses = {}
 licenses = {}
@@ -240,8 +241,13 @@ def set_alliance():
 
 def random_choose_an_address():
 
-    peer = random.choice(addresses.keys())
+    if ALLIANCE_FOCUS_ON_MINING:
+        peer = random.choice(env.roledefs['others'])
+    else:
+        peer = random.choice(addresses.keys())
+
     address = random.choice(addresses[peer])
+
     return peer, address
 
 def execute_or_not(count):
@@ -409,8 +415,9 @@ def running():
         my_address = addresses[env.host][0]
         if is_alliance(my_address):
             alliance_track(count)
-        issuer_track()
-        normal_track()
+        if not is_alliance(my_address) or not ALLIANCE_FOCUS_ON_MINING:
+            issuer_track()
+            normal_track()
         count += 1
 
         # sleep for yielding cpu
