@@ -12,6 +12,7 @@ import ConfigParser
 from time import sleep, time
 
 from fabric.api import *
+from fabric.colors import green, red
 from fabric.context_managers import hide
 from fabric.tasks import execute
 from fabric.operations import get
@@ -389,7 +390,7 @@ def random_send_money(balance):
     money = int(money)
     if color == 0:
         return
-    money_out = money / 5
+    money_out = 1
     if money_out == 0:
         return
     result = cli("sendtoaddress", address, money_out, color)
@@ -398,7 +399,7 @@ def random_send_money(balance):
 
 def normal_track():
 
-    for i in xrange(20 if HIGH_TPS else 1):
+    for i in xrange(300 if HIGH_TPS else 1):
         result = cli("getbalance")
         balance = json.loads(result)
         # if no balance then return
@@ -407,19 +408,27 @@ def normal_track():
 
         random_send_money(balance)
 
+def is_monitor(my_address):
+
+    return my_address in env.roledefs['monitor']
+
 @parallel
 def running():
 
     count = 0
+    my_address = addresses[env.host][0]
+    if is_monitor(my_address):
+        f = open('monitor', 'w')
     while True:
-        my_address = addresses[env.host][0]
         if is_alliance(my_address):
             alliance_track(count)
         if not is_alliance(my_address) or not ALLIANCE_FOCUS_ON_MINING:
             issuer_track()
             normal_track()
-        count += 1
+        if is_monitor(my_address):
+            print_tps(f)
 
+        count += 1
         # sleep for yielding cpu
         sleep(1)
 
@@ -456,6 +465,7 @@ def print_tps(output_file):
 
     while 1:
         sleep(sleep_time)
+        t1 = time()
         elapsed_time = int(time() - start_time)
 
         result = cli('getblockcount')
@@ -485,7 +495,7 @@ def print_tps(output_file):
         formatter = "{}\t{}\t{}\t{}\n"
         output_file.write(formatter.format(
                     round(cumulate_tx_count / float(elapsed_time), 2),
-                    round(recent_cumulate_tx_count / float(sleep_time), 2),
+                    round(recent_cumulate_tx_count / float(time() - t1), 2),
                     now_block_height,
                     mempool_tx_count))
 
@@ -519,6 +529,7 @@ def parsing_hosts():
 
     env.user = c.items('user')[0][0]
     env.password = c.items('password')[0][0]
+#    env.key_filename = "~/.ssh/id_rsa"
 
     env.roledefs['alliance'] = [i[0] for i in c.items('alliance')]
     env.roledefs['others'] = [i[0] for i in c.items('others')]
@@ -531,6 +542,9 @@ def start_all_miner():
 
 if __name__ == '__main__':
 
+    print "\x1b[42mhi\x1b[0m"
+    print "{}{}".format(red("ha"), green("yo"))
+    #sys.exit(1)
     parsing_hosts()
 
     #execute(test, 'shit')
@@ -543,7 +557,6 @@ if __name__ == '__main__':
         safe_sleep = raw_input("Safe sleep? (y/n):[y] ")
     else:
         safe_sleep = 'n'
-
     multiple_color = raw_input("Mutiple colors? (y/n):[y] ")
     NUM_ADDRESSES = raw_input("Number of addresses for each node?:[50] ") or 50
     NUM_ADDRESSES = int(NUM_ADDRESSES)
@@ -553,6 +566,7 @@ if __name__ == '__main__':
         SAFE_SLEEP = False
     if multiple_color.find('n') != -1:
         NUM_COLORS = 1
+
 
     with settings(hide(), warn_only=True),\
         open('stdout', 'w' if RESET_BLOCKCHAIN else 'a') as stdout_file,\
@@ -573,11 +587,11 @@ if __name__ == '__main__':
             print "Setting up alliance..."
             with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
                 execute(set_alliance)
-
+        '''
         if env.roledefs['monitor'] != []:
             t = threading.Thread(name="monitor thread", target=setup_monitor, args=(sys.stdout,))
             t.start()
-
+        '''
         print "Start running auto test..."
         with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
             execute(running)
