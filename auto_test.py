@@ -22,6 +22,7 @@ NUM_ADDRESSES = 10 # num of address per host
 PORT = 55888 # the port the hosts listen to
 NUM_COLORS = 1000 # num of color you want to use
 MINT_AMOUNT = 100 # the mint amount per mint transaction
+COIN = 1
 SAFE_SLEEP = True # sleep for a short time after each transaction conducted
 HIGH_TPS = False # boost the tps
 RESET_BLOCKCHAIN = True
@@ -71,7 +72,7 @@ def cli_can_fail(*args, **kwargs):
 
     return run("bitcoin-cli -gcoin " + ' '.join(map(str, args)))
 
-def confirm_bitcoind_functioning(num_trial=20):
+def confirm_bitcoind_functioning(num_trial=50):
 
     for i in xrange(num_trial):
         result = cli_can_fail("getinfo")
@@ -94,7 +95,7 @@ def reset_bitcoind():
         # TODO: if bitcoind has problem, e.g. Error: OpenSSL lack support for
         # ECDSA, we should handle error?
         result = run("bitcoind -gcoin -daemon -port={0} ".format(PORT) +
-                     "-logip -debug")
+                     "-logip -debug -rpcthread=20")
         if result.failed:
             AutoTestError("bitcoind launch failed")
 
@@ -117,9 +118,12 @@ def add_peers():
 def get_addresses(num_trial=100):
 
     for i in xrange(num_trial):
+        cli("keypoolrefill", NUM_ADDRESSES + 1)
+        default_key = cli("getfixedaddress")
         result = cli("listwalletaddress", "-p", NUM_ADDRESSES)
         if result.succeeded:
             result = json.loads(result)
+            result[0] = default_key
             return map(str, result)
         sleep(1)
     raise AutoTestError("get address error")
@@ -303,7 +307,7 @@ def alliance_track(count):
     if not execute_or_not(count):
         return
 
-    result = cli("mint", 1, 0)
+    result = cli("mint", COIN, 0)
     if result.failed:
         return
     wait_for_tx_confirmed(result, flag_maturity=True)
@@ -417,8 +421,8 @@ def running():
 
     count = 0
     my_address = addresses[env.host][0]
-    if is_monitor(my_address):
-        f = open('monitor', 'w')
+#    if is_monitor(my_address):
+#        f = open('monitor', 'w')
     while True:
         if is_alliance(my_address):
             alliance_track(count)
@@ -576,7 +580,6 @@ if __name__ == '__main__':
             print "Resetting bitcoind"
             with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
                 execute(reset_bitcoind)
-
         print "Setting up connections and get addresses..."
         with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
             addresses = execute(setup_connections)
@@ -587,12 +590,6 @@ if __name__ == '__main__':
             print "Setting up alliance..."
             with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
                 execute(set_alliance)
-        '''
-        if env.roledefs['monitor'] != []:
-            t = threading.Thread(name="monitor thread", target=setup_monitor, args=(sys.stdout,))
-            t.start()
-        '''
         print "Start running auto test..."
         with RedirectStreams(stdout=stdout_file, stderr=stderr_file):
             execute(running)
-
